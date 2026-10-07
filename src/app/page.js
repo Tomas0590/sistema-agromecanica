@@ -24,7 +24,6 @@ export default function Home() {
 
   const [activeTab, setActiveTab] = useState('clientes');
 
-  // Estado Clientes y Formulario
   const [clientes, setClientes] = useState([]);
   const [editingId, setEditingId] = useState(null);
   const [cuit, setCuit] = useState('');
@@ -36,11 +35,8 @@ export default function Home() {
   const [loadingCuit, setLoadingCuit] = useState(false);
   const [mensajeCliente, setMensajeCliente] = useState('');
 
-  // Estado BCRA
   const [resultadosBcra, setResultadosBcra] = useState({});
   const [loadingBcraId, setLoadingBcraId] = useState(null);
-
-  // Modal Detalle
   const [clienteSeleccionado, setClienteSeleccionado] = useState(null);
 
   useEffect(() => {
@@ -84,7 +80,6 @@ export default function Home() {
     await supabase.auth.signOut();
   };
 
-  // Buscar CUIT usando nuestra API Route de Servidor
   const buscarCuit = async () => {
     const cleanCuit = cuit.replace(/\D/g, '');
     if (cleanCuit.length !== 11) {
@@ -113,7 +108,6 @@ export default function Home() {
     }
   };
 
-  // Consultar BCRA en tiempo real
   const consultarBcra = async (clienteId, cuitCliente) => {
     const cleanCuit = cuitCliente?.replace(/\D/g, '');
     if (!cleanCuit || cleanCuit.length !== 11) return;
@@ -319,6 +313,7 @@ export default function Home() {
           <div>
             <h2 style={{ color: '#cbd5e1', marginBottom: '1.5rem' }}>Gestión de Clientes y Cuentas Corrientes</h2>
 
+            {/* FORMULARIO REORGANIZADO */}
             <div style={{ background: '#1e293b', padding: '1.5rem', borderRadius: '8px', border: '1px solid #334155', marginBottom: '2rem' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
                 <h3 style={{ margin: 0, color: '#f59e0b', fontSize: '1.1rem' }}>
@@ -337,8 +332,9 @@ export default function Home() {
                 </div>
               )}
 
-              <form onSubmit={guardarCliente} style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1rem' }}>
-                <div>
+              <form onSubmit={guardarCliente} style={{ display: 'grid', gridTemplateColumns: 'repeat(12, 1fr)', gap: '1rem' }}>
+                {/* CUIT */}
+                <div style={{ gridColumn: 'span 3' }}>
                   <label style={{ display: 'block', fontSize: '0.8rem', color: '#94a3b8', marginBottom: '0.25rem' }}>CUIT / CUIL</label>
                   <div style={{ display: 'flex', gap: '0.5rem' }}>
                     <input 
@@ -354,7 +350,8 @@ export default function Home() {
                   </div>
                 </div>
 
-                <div>
+                {/* Razón Social (Agrandada) */}
+                <div style={{ gridColumn: 'span 6' }}>
                   <label style={{ display: 'block', fontSize: '0.8rem', color: '#94a3b8', marginBottom: '0.25rem' }}>Razón Social / Nombre</label>
                   <input 
                     type="text" 
@@ -364,7 +361,8 @@ export default function Home() {
                   />
                 </div>
 
-                <div>
+                {/* Condición IVA */}
+                <div style={{ gridColumn: 'span 3' }}>
                   <label style={{ display: 'block', fontSize: '0.8rem', color: '#94a3b8', marginBottom: '0.25rem' }}>Condición IVA</label>
                   <select 
                     value={condicionIva} 
@@ -378,27 +376,8 @@ export default function Home() {
                   </select>
                 </div>
 
-                <div>
-                  <label style={{ display: 'block', fontSize: '0.8rem', color: '#94a3b8', marginBottom: '0.25rem' }}>Email</label>
-                  <input 
-                    type="email" 
-                    value={email} 
-                    onChange={(e) => setEmail(e.target.value)} 
-                    style={{ width: '100%', padding: '0.5rem', borderRadius: '4px', border: '1px solid #475569', background: '#0f172a', color: '#fff' }}
-                  />
-                </div>
-
-                <div>
-                  <label style={{ display: 'block', fontSize: '0.8rem', color: '#94a3b8', marginBottom: '0.25rem' }}>Teléfono</label>
-                  <input 
-                    type="text" 
-                    value={telefono} 
-                    onChange={(e) => setTelefono(e.target.value)} 
-                    style={{ width: '100%', padding: '0.5rem', borderRadius: '4px', border: '1px solid #475569', background: '#0f172a', color: '#fff' }}
-                  />
-                </div>
-
-                <div>
+                {/* Dirección / Localidad */}
+                <div style={{ gridColumn: 'span 4' }}>
                   <label style={{ display: 'block', fontSize: '0.8rem', color: '#94a3b8', marginBottom: '0.25rem' }}>Dirección / Localidad</label>
                   <input 
                     type="text" 
@@ -408,7 +387,30 @@ export default function Home() {
                   />
                 </div>
 
-                <div style={{ gridColumn: '1 / -1', textAlign: 'right' }}>
+                {/* Teléfono */}
+                <div style={{ gridColumn: 'span 4' }}>
+                  <label style={{ display: 'block', fontSize: '0.8rem', color: '#94a3b8', marginBottom: '0.25rem' }}>Teléfono</label>
+                  <input 
+                    type="text" 
+                    value={telefono} 
+                    onChange={(e) => setTelefono(e.target.value)} 
+                    style={{ width: '100%', padding: '0.5rem', borderRadius: '4px', border: '1px solid #475569', background: '#0f172a', color: '#fff' }}
+                  />
+                </div>
+
+                {/* Email */}
+                <div style={{ gridColumn: 'span 4' }}>
+                  <label style={{ display: 'block', fontSize: '0.8rem', color: '#94a3b8', marginBottom: '0.25rem' }}>Email</label>
+                  <input 
+                    type="email" 
+                    value={email} 
+                    onChange={(e) => setEmail(e.target.value)} 
+                    style={{ width: '100%', padding: '0.5rem', borderRadius: '4px', border: '1px solid #475569', background: '#0f172a', color: '#fff' }}
+                  />
+                </div>
+
+                {/* Botón de Guardar */}
+                <div style={{ gridColumn: 'span 12', textAlign: 'right' }}>
                   <button type="submit" style={{ background: editingId ? '#38bdf8' : '#f59e0b', color: '#0f172a', border: 'none', padding: '0.6rem 1.5rem', borderRadius: '6px', fontWeight: 'bold', cursor: 'pointer' }}>
                     {editingId ? '💾 Guardar Cambios' : '+ Guardar Cliente'}
                   </button>
