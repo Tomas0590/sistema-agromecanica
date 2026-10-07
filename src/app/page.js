@@ -1,7 +1,7 @@
 'use client';
 import React, { useState, useEffect } from 'react';
 import { createClient } from '@supabase/supabase-js';
-import { Search, Printer, Plus, Trash2, ShoppingBag, Package, Users, UserPlus, Check, ShieldAlert, RefreshCw, Mail, Building } from 'lucide-react';
+import { Search, Printer, Plus, Trash2, ShoppingBag, Package, Users, UserPlus, Check, ShieldAlert, RefreshCw } from 'lucide-react';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
 const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
@@ -63,8 +63,7 @@ export default function Home() {
     if (clis) setClientes(clis);
   }
 
-  // AUTOCOMPLETAR DATOS POR CUIT
-  // AUTOCOMPLETAR DATOS POR CUIT (A través de nuestra API Route)
+  // AUTOCOMPLETAR DATOS POR CUIT USANDO LA API ROUTE INTERNA
   const buscarDatosPorCUIT = async (cuitIngresado) => {
     const cleanCuit = cuitIngresado.replace(/\D/g, '');
     if (cleanCuit.length !== 11) return;
@@ -89,6 +88,14 @@ export default function Home() {
       setBuscandoCuit(false);
     }
   };
+
+  const manejarCambioCuit = (e) => {
+    const valor = e.target.value;
+    setNuevoCliente({ ...nuevoCliente, cuit_dni: valor });
+
+    const cleanCuit = valor.replace(/\D/g, '');
+    if (cleanCuit.length === 11) {
+      buscarDatosPorCUIT(cleanCuit);
     }
   };
 
@@ -103,9 +110,9 @@ export default function Home() {
     let chequesRechazados = 0;
 
     try {
-      const resDeudas = await fetch(`https://api.bcra.gob.ar/centraldedeudores/v1.0/Deudas/${cleanCuit}`);
-      if (resDeudas.ok) {
-        const data = await resDeudas.json();
+      const res = await fetch(`/api/bcra?cuit=${cleanCuit}`);
+      if (res.ok) {
+        const data = await res.json();
         if (data && data.results && data.results.periodos) {
           const period = data.results.periodos[0];
           if (period && period.entidades) {
@@ -114,18 +121,6 @@ export default function Home() {
               if (e.situacion > maxSit) maxSit = e.situacion;
             });
           }
-        }
-      }
-
-      const resCheques = await fetch(`https://api.bcra.gob.ar/centraldedeudores/v1.0/Deudas/ChequesRechazados/${cleanCuit}`);
-      if (resCheques.ok) {
-        const dataCh = await resCheques.json();
-        if (dataCh && dataCh.results && dataCh.results.causales) {
-          dataCh.results.causales.forEach((c) => {
-            (c.entidades || []).forEach((e) => {
-              chequesRechazados += (e.detalle || []).length;
-            });
-          });
         }
       }
 
@@ -474,80 +469,4 @@ export default function Home() {
               </h2>
               <button
                 onClick={() => window.print()}
-                className="bg-amber-500 hover:bg-amber-600 text-slate-950 font-semibold px-3 py-1.5 rounded-lg text-xs flex items-center gap-1 print:hidden"
-              >
-                <Printer size={14} /> Imprimir Comprobante
-              </button>
-            </div>
-
-            <div>
-              <label className="text-xs font-semibold text-slate-600 block mb-1">Seleccionar Cliente:</label>
-              <select
-                className="w-full p-2 border border-slate-300 rounded-lg text-sm bg-slate-50 print:hidden"
-                value={clienteSeleccionado ? clienteSeleccionado.id : ''}
-                onChange={(e) => {
-                  const cli = clientes.find((c) => c.id == e.target.value);
-                  setClienteSeleccionado(cli || null);
-                  if (cli && cli.cuit_dni) consultarBCRA(cli.cuit_dni, cli.id);
-                }}
-              >
-                <option value="">-- Cliente Mostrador / Contado --</option>
-                {clientes.map((c) => (
-                  <option key={c.id} value={c.id}>{c.razon_social} {c.cuit_dni ? `(${c.cuit_dni})` : ''}</option>
-                ))}
-              </select>
-
-              <div className="mt-2 p-3 bg-slate-50 rounded-lg border border-slate-200 text-xs text-slate-700 print:bg-white print:p-0 print:border-none space-y-1">
-                <div className="font-bold text-sm text-slate-900 flex justify-between items-center">
-                  <span>{clienteSeleccionado ? clienteSeleccionado.razon_social : 'Cliente Mostrador / Contado'}</span>
-                  {clienteSeleccionado && bcraData[clienteSeleccionado.id] && (
-                    <span className={`px-2 py-0.5 rounded text-[10px] font-bold border ${SITUACION_BCRA[bcraData[clienteSeleccionado.id].maxSit]?.color}`}>
-                      {SITUACION_BCRA[bcraData[clienteSeleccionado.id].maxSit]?.nombre}
-                    </span>
-                  )}
-                </div>
-                {clienteSeleccionado && (
-                  <div className="grid grid-cols-2 gap-1 text-slate-600">
-                    <div>CUIT: {clienteSeleccionado.cuit_dni || 'S/D'}</div>
-                    <div>Cond. IVA: {clienteSeleccionado.condicion_iva}</div>
-                    <div>Tel: {clienteSeleccionado.telefono || 'S/D'}</div>
-                    <div>Email: {clienteSeleccionado.email || 'S/D'}</div>
-                    <div>Localidad: {clienteSeleccionado.direccion || 'S/D'}</div>
-                  </div>
-                )}
-              </div>
-            </div>
-
-            <div className="space-y-2 max-h-[350px] overflow-y-auto print:max-h-none">
-              {pedido.length === 0 ? (
-                <div className="text-center py-8 text-slate-400 text-sm">Sin productos agregados.</div>
-              ) : (
-                pedido.map((item) => (
-                  <div key={item.id} className="flex justify-between items-center bg-slate-50 p-2 rounded-lg text-sm border border-slate-100 print:bg-white print:border-b">
-                    <div>
-                      <div className="font-medium text-slate-800">{item.nombre}</div>
-                      <div className="text-xs text-slate-500">${item.precio_venta} x {item.cantidad} un.</div>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <span className="font-bold text-slate-800">${item.precio_venta * item.cantidad}</span>
-                      <button onClick={() => quitarDelPedido(item.id)} className="text-red-500 hover:text-red-700 print:hidden">
-                        <Trash2 size={14} />
-                      </button>
-                    </div>
-                  </div>
-                ))
-              )}
-            </div>
-
-            <div className="border-t pt-3 space-y-1">
-              <div className="flex justify-between font-bold text-lg text-slate-900">
-                <span>Total:</span>
-                <span>${calcularTotal()}</span>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
+                className="bg-amber-500 hover:bg-amber-600 text-slate-950 font-semibold px-
