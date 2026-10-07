@@ -1,559 +1,334 @@
 'use client';
-import React, { useState, useEffect } from 'react';
-import { createClient } from '@supabase/supabase-js';
-import { Search, Printer, Plus, Trash2, ShoppingBag, Package, Users, UserPlus, Check, ShieldAlert, RefreshCw } from 'lucide-react';
 
+import { useState, useEffect } from 'react';
+import { createClient } from '@supabase/supabase-js';
+
+// Inicialización limpia de Supabase
 const SUPABASE_URL = 'https://tqfpcogdvhtvvhdqewdg.supabase.co';
 const SUPABASE_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'sb_publishable_MchMROFkf12BgkCahzrC5w_qAlaGXKr';
 const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 
-const SITUACION_BCRA = {
-  1: { nombre: 'Sit. 1 - Normal', color: 'bg-emerald-100 text-emerald-800 border-emerald-300' },
-  2: { nombre: 'Sit. 2 - Riesgo Bajo', color: 'bg-lime-100 text-lime-800 border-lime-300' },
-  3: { nombre: 'Sit. 3 - Riesgo Medio', color: 'bg-amber-100 text-amber-800 border-amber-300' },
-  4: { nombre: 'Sit. 4 - Riesgo Alto', color: 'bg-orange-100 text-orange-800 border-orange-300' },
-  5: { nombre: 'Sit. 5 - Irrecuperable', color: 'bg-red-100 text-red-800 border-red-300' },
-  6: { nombre: 'Sit. 6 - Irrecuperable Técnica', color: 'bg-red-200 text-red-900 border-red-400' },
-};
-
 export default function Home() {
-  const [pestana, setPestana] = useState('pedidos');
-  
-  const [productos, setProductos] = useState([]);
-  const [categorias, setCategorias] = useState([]);
-  const [subcategorias, setSubcategorias] = useState([]);
+  // Estado de Autenticación
+  const [session, setSession] = useState(null);
+  const [usernameAuth, setUsernameAuth] = useState('');
+  const [passwordAuth, setPasswordAuth] = useState('');
+  const [errorAuth, setErrorAuth] = useState('');
+
+  // Navegación principal (Pestañas)
+  const [activeTab, setActiveTab] = useState('pedidos'); // 'pedidos' o 'clientes'
+
+  // Estados del Módulo de Clientes
   const [clientes, setClientes] = useState([]);
-
-  const [busqueda, setBusqueda] = useState('');
-  const [catSeleccionada, setCatSeleccionada] = useState('');
-  const [subCatSeleccionada, setSubCatSeleccionada] = useState('');
-
-  const [pedido, setPedido] = useState([]);
-  const [clienteSeleccionado, setClienteSeleccionado] = useState(null);
-
-  const [bcraData, setBcraData] = useState({});
-  const [cargandoBcra, setCargandoBcra] = useState(null);
-  const [buscandoCuit, setBuscandoCuit] = useState(false);
-
-  const [nuevoCliente, setNuevoCliente] = useState({
-    razon_social: '',
-    cuit_dni: '',
-    condicion_iva: 'Responsable Inscripto',
-    telefono: '',
-    email: '',
-    direccion: 'Carhué'
-  });
+  const [cuit, setCuit] = useState('');
+  const [razonSocial, setRazonSocial] = useState('');
+  const [email, setEmail] = useState('');
+  const [telefono, setTelefono] = useState('');
+  const [direccion, setDireccion] = useState('');
+  const [loadingCuit, setLoadingCuit] = useState(false);
   const [mensajeCliente, setMensajeCliente] = useState('');
 
+  // Comprobar sesión al cargar
   useEffect(() => {
-    cargarDatos();
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setSession(session);
+    });
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setSession(session);
+    });
+
+    return () => subscription.unsubscribe();
   }, []);
 
-  async function cargarDatos() {
-    const { data: cats } = await supabase.from('categorias').select('*');
-    if (cats) setCategorias(cats);
-
-    const { data: subCats } = await supabase.from('subcategorias').select('*');
-    if (subCats) setSubcategorias(subCats);
-
-    const { data: prods } = await supabase.from('productos').select('*, categorias(nombre), subcategorias(nombre)');
-    if (prods) setProductos(prods);
-
-    const { data: clis } = await supabase.from('clientes').select('*').order('razon_social', { ascending: true });
-    if (clis) setClientes(clis);
-  }
-
-  const buscarDatosPorCUIT = async (cuitIngresado) => {
-    const cleanCuit = cuitIngresado.replace(/\D/g, '');
-    if (cleanCuit.length !== 11) return;
-
-    setBuscandoCuit(true);
-    try {
-      const res = await fetch(`/api/bcra?cuit=${cleanCuit}`);
-      if (res.ok) {
-        const data = await res.json();
-        if (data && data.results && data.results.denominacion) {
-          const esEmpresa = cleanCuit.startsWith('30') || cleanCuit.startsWith('33') || cleanCuit.startsWith('34');
-          setNuevoCliente((prev) => ({
-            ...prev,
-            razon_social: data.results.denominacion,
-            condicion_iva: esEmpresa ? 'Responsable Inscripto' : 'Monotributo'
-          }));
-        }
-      }
-    } catch (err) {
-      console.warn('No se pudo obtener el nombre desde BCRA.');
-    } finally {
-      setBuscandoCuit(false);
+  // Cargar clientes al estar autenticado
+  useEffect(() => {
+    if (session) {
+      cargarClientes();
     }
+  }, [session]);
+
+  const cargarClientes = async () => {
+    const { data, error } = await supabase.from('clientes').select('*').order('created_at', { ascending: false });
+    if (!error && data) setClientes(data);
   };
 
-  const manejarCambioCuit = (e) => {
-    const valor = e.target.value;
-    setNuevoCliente({ ...nuevoCliente, cuit_dni: valor });
+  // Login con Usuario + Contraseña
+  const handleLogin = async (e) => {
+    e.preventDefault();
+    setErrorAuth('');
+    const cleanUser = usernameAuth.trim().toLowerCase();
+    const emailToUse = cleanUser.includes('@') ? cleanUser : `${cleanUser}@agromecanica.com`;
 
-    const cleanCuit = valor.replace(/\D/g, '');
-    if (cleanCuit.length === 11) {
-      buscarDatosPorCUIT(cleanCuit);
-    }
+    const { error } = await supabase.auth.signInWithPassword({
+      email: emailToUse,
+      password: passwordAuth,
+    });
+
+    if (error) setErrorAuth('Usuario o contraseña incorrectos');
   };
 
-  const consultarBCRA = async (cuit, clienteId) => {
-    if (!cuit) return;
+  const handleLogout = async () => {
+    await supabase.auth.signOut();
+  };
+
+  // Buscar datos CUIT en BCRA/AFIP
+  const buscarCuit = async () => {
     const cleanCuit = cuit.replace(/\D/g, '');
-    if (cleanCuit.length !== 11) return;
-
-    setCargandoBcra(clienteId);
-    let maxSit = 1;
-    let totalDebt = 0;
-    let chequesRechazados = 0;
-
+    if (cleanCuit.length !== 11) {
+      setMensajeCliente('El CUIT debe tener 11 dígitos.');
+      return;
+    }
+    setLoadingCuit(true);
+    setMensajeCliente('');
     try {
-      const res = await fetch(`/api/bcra?cuit=${cleanCuit}`);
+      const res = await fetch(`https://api.v2.padron.ar/cuit/${cleanCuit}`);
       if (res.ok) {
         const data = await res.json();
-        if (data && data.results && data.results.periodos) {
-          const period = data.results.periodos[0];
-          if (period && period.entidades) {
-            period.entidades.forEach((e) => {
-              totalDebt += e.monto || 0;
-              if (e.situacion > maxSit) maxSit = e.situacion;
-            });
-          }
-        }
+        setRazonSocial(data.denominacion || data.nombre || '');
+        if (data.direccion) setDireccion(data.direccion);
+      } else {
+        setMensajeCliente('No se encontraron datos automáticos para este CUIT. Puedes ingresarlos manualmente.');
       }
-
-      setBcraData((prev) => ({
-        ...prev,
-        [clienteId]: {
-          maxSit,
-          totalDebt: totalDebt * 1000,
-          chequesRechazados,
-          consultado: true
-        }
-      }));
-    } catch (err) {
-      setBcraData((prev) => ({
-        ...prev,
-        [clienteId]: { maxSit: 1, totalDebt: 0, chequesRechazados: 0, consultado: true }
-      }));
+    } catch {
+      setMensajeCliente('Error al consultar padrón. Ingresa la Razón Social manualmente.');
     } finally {
-      setCargandoBcra(null);
+      setLoadingCuit(false);
     }
   };
 
+  // Guardar Cliente en Supabase
   const guardarCliente = async (e) => {
     e.preventDefault();
-    if (!nuevoCliente.razon_social) return;
+    setMensajeCliente('');
+    if (!razonSocial || !cuit) {
+      setMensajeCliente('CUIT y Razón Social son obligatorios.');
+      return;
+    }
 
-    setMensajeCliente('Guardando...');
-
-    const clienteAInsertar = {
-      razon_social: nuevoCliente.razon_social,
-      cuit_dni: nuevoCliente.cuit_dni || null,
-      condicion_iva: nuevoCliente.condicion_iva || 'Responsable Inscripto',
-      telefono: nuevoCliente.telefono || null,
-      email: nuevoCliente.email || null,
-      direccion: nuevoCliente.direccion || null
-    };
-
-    const { data, error } = await supabase
-      .from('clientes')
-      .insert([clienteAInsertar])
-      .select();
+    const { error } = await supabase.from('clientes').insert([
+      { cuit, razon_social: razonSocial, email, telefono, direccion }
+    ]);
 
     if (error) {
-      console.error('Error al guardar cliente:', error);
-      setMensajeCliente(`Error: ${error.message}`);
-    } else if (data) {
-      setMensajeCliente('¡Cliente guardado con éxito!');
-      setClientes((prev) => [...prev, data[0]]);
-      setNuevoCliente({
-        razon_social: '',
-        cuit_dni: '',
-        condicion_iva: 'Responsable Inscripto',
-        telefono: '',
-        email: '',
-        direccion: 'Carhué'
-      });
-      setTimeout(() => setMensajeCliente(''), 4000);
-    }
-  };
-  const productosFiltrados = productos.filter((p) => {
-    const coincideTexto = 
-      p.nombre.toLowerCase().includes(busqueda.toLowerCase()) ||
-      p.codigo_sku.toLowerCase().includes(busqueda.toLowerCase()) ||
-      (p.codigo_oem && p.codigo_oem.toLowerCase().includes(busqueda.toLowerCase())) ||
-      (p.medida && p.medida.toLowerCase().includes(busqueda.toLowerCase()));
-
-    const coincideCat = catSeleccionada ? p.categoria_id == catSeleccionada : true;
-    const coincideSubCat = subCatSeleccionada ? p.subcategoria_id == subCatSeleccionada : true;
-
-    return coincideTexto && coincideCat && coincideSubCat;
-  });
-
-  const agregarAlPedido = (prod) => {
-    const existe = pedido.find((item) => item.id === prod.id);
-    if (existe) {
-      setPedido(pedido.map((item) => item.id === prod.id ? { ...item, cantidad: item.cantidad + 1 } : item));
+      setMensajeCliente(`Error al guardar: ${error.message}`);
     } else {
-      setPedido([...pedido, { ...prod, cantidad: 1 }]);
+      setMensajeCliente('¡Cliente guardado con éxito!');
+      setCuit('');
+      setRazonSocial('');
+      setEmail('');
+      setTelefono('');
+      setDireccion('');
+      cargarClientes();
     }
   };
 
-  const quitarDelPedido = (id) => {
-    setPedido(pedido.filter((item) => item.id !== id));
-  };
+  // PANTALLA DE LOGIN
+  if (!session) {
+    return (
+      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '100vh', backgroundColor: '#0f172a', fontFamily: 'sans-serif' }}>
+        <form onSubmit={handleLogin} style={{ background: '#1e293b', padding: '2.5rem', borderRadius: '12px', color: '#fff', width: '340px', boxShadow: '0 10px 25px rgba(0,0,0,0.5)' }}>
+          <h2 style={{ marginBottom: '0.25rem', textAlign: 'center', color: '#f59e0b', fontSize: '1.5rem' }}>Agro-Repuestos</h2>
+          <p style={{ marginBottom: '1.5rem', textAlign: 'center', fontSize: '0.875rem', color: '#94a3b8' }}>& Bulonería — Acceso</p>
+          
+          {errorAuth && (
+            <div style={{ background: '#450a0a', border: '1px solid #ef4444', color: '#fca5a5', padding: '0.5rem', borderRadius: '6px', fontSize: '0.875rem', marginBottom: '1rem', textAlign: 'center' }}>
+              {errorAuth}
+            </div>
+          )}
 
-  const calcularTotal = () => {
-    return pedido.reduce((acc, item) => acc + (item.precio_venta * item.cantidad), 0);
-  };return (
-    <div className="min-h-screen bg-slate-100 p-4 font-sans print:p-0 print:bg-white">
-      <header className="bg-slate-900 text-white p-4 rounded-xl mb-4 flex flex-col sm:flex-row justify-between items-center gap-4 print:hidden">
-        <h1 className="text-xl font-bold flex items-center gap-2">
-          <Package className="text-amber-400" /> AGRO-REPUESTOS & BULONERÍA
-        </h1>
-        <div className="flex gap-2">
-          <button
-            onClick={() => setPestana('pedidos')}
-            className={`px-4 py-2 rounded-lg text-sm font-semibold flex items-center gap-2 transition ${pestana === 'pedidos' ? 'bg-amber-500 text-slate-950' : 'bg-slate-800 text-slate-300 hover:bg-slate-700'}`}
-          >
-            <ShoppingBag size={16} /> Ventas / Stock
+          <div style={{ marginBottom: '1.25rem' }}>
+            <label style={{ display: 'block', fontSize: '0.875rem', marginBottom: '0.5rem', color: '#cbd5e1' }}>Usuario</label>
+            <input 
+              type="text" 
+              placeholder="Ej: admin"
+              value={usernameAuth} 
+              onChange={(e) => setUsernameAuth(e.target.value)} 
+              required 
+              style={{ width: '100%', padding: '0.65rem', borderRadius: '6px', border: '1px solid #475569', background: '#0f172a', color: '#fff', outline: 'none', boxSizing: 'border-box' }}
+            />
+          </div>
+
+          <div style={{ marginBottom: '1.75rem' }}>
+            <label style={{ display: 'block', fontSize: '0.875rem', marginBottom: '0.5rem', color: '#cbd5e1' }}>Contraseña</label>
+            <input 
+              type="password" 
+              placeholder="••••••••"
+              value={passwordAuth} 
+              onChange={(e) => setPasswordAuth(e.target.value)} 
+              required 
+              style={{ width: '100%', padding: '0.65rem', borderRadius: '6px', border: '1px solid #475569', background: '#0f172a', color: '#fff', outline: 'none', boxSizing: 'border-box' }}
+            />
+          </div>
+
+          <button type="submit" style={{ width: '100%', padding: '0.75rem', background: '#f59e0b', border: 'none', borderRadius: '6px', color: '#0f172a', fontWeight: 'bold', fontSize: '1rem', cursor: 'pointer' }}>
+            Ingresar
           </button>
-          <button
-            onClick={() => setPestana('clientes')}
-            className={`px-4 py-2 rounded-lg text-sm font-semibold flex items-center gap-2 transition ${pestana === 'clientes' ? 'bg-amber-500 text-slate-950' : 'bg-slate-800 text-slate-300 hover:bg-slate-700'}`}
-          >
-            <Users size={16} /> Clientes ({clientes.length})
-          </button>
+        </form>
+      </div>
+    );
+  }
+
+  // PANTALLA PRINCIPAL (AUTENTICADO)
+  return (
+    <div style={{ minHeight: '100vh', backgroundColor: '#0f172a', color: '#f8fafc', fontFamily: 'sans-serif' }}>
+      
+      {/* NAVBAR SUPERIOR */}
+      <header style={{ background: '#1e293b', borderBottom: '1px solid #334155', padding: '0.75rem 2rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '2rem' }}>
+          <h1 style={{ fontSize: '1.25rem', color: '#f59e0b', margin: 0, fontWeight: 'bold' }}>Agro-Repuestos & Bulonería</h1>
+          <nav style={{ display: 'flex', gap: '0.5rem' }}>
+            <button 
+              onClick={() => setActiveTab('pedidos')} 
+              style={{ padding: '0.5rem 1rem', borderRadius: '6px', border: 'none', cursor: 'pointer', background: activeTab === 'pedidos' ? '#f59e0b' : 'transparent', color: activeTab === 'pedidos' ? '#0f172a' : '#94a3b8', fontWeight: 'bold' }}
+            >
+              📦 Stock y Pedidos
+            </button>
+            <button 
+              onClick={() => setActiveTab('clientes')} 
+              style={{ padding: '0.5rem 1rem', borderRadius: '6px', border: 'none', cursor: 'pointer', background: activeTab === 'clientes' ? '#f59e0b' : 'transparent', color: activeTab === 'clientes' ? '#0f172a' : '#94a3b8', fontWeight: 'bold' }}
+            >
+              👥 Clientes y Cuentas Corrientes
+            </button>
+          </nav>
         </div>
+
+        <button onClick={handleLogout} style={{ background: '#334155', border: 'none', color: '#cbd5e1', padding: '0.5rem 1rem', borderRadius: '6px', cursor: 'pointer', fontSize: '0.875rem' }}>
+          Cerrar Sesión
+        </button>
       </header>
 
-      {pestana === 'clientes' && (
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          <div className="bg-white p-5 rounded-xl shadow-sm border border-slate-200">
-            <h2 className="font-bold text-slate-800 flex items-center gap-2 mb-4">
-              <UserPlus size={18} className="text-amber-500" /> Nuevo Cliente
-            </h2>
-            <form onSubmit={guardarCliente} className="space-y-3">
-              <div>
-                <label className="text-xs font-semibold text-slate-600 block mb-1">CUIT / DNI (11 dígitos sin guiones)</label>
-                <div className="relative">
-                  <input
-                    type="text"
-                    placeholder="30500010912"
-                    className="w-full p-2 border border-slate-300 rounded-lg text-sm font-mono pr-8"
-                    value={nuevoCliente.cuit_dni}
-                    onChange={manejarCambioCuit}
-                  />
-                  {buscandoCuit && (
-                    <RefreshCw size={14} className="animate-spin text-amber-500 absolute right-2.5 top-3" />
-                  )}
-                </div>
-              </div>
+      <main style={{ padding: '2rem', maxWidth: '1200px', margin: '0 auto' }}>
+        
+        {/* PESTAÑA 1: STOCK Y PEDIDOS */}
+        {activeTab === 'pedidos' && (
+          <div>
+            <h2 style={{ color: '#cbd5e1', marginBottom: '1.5rem' }}>Gestión de Stock y Pedidos de Venta</h2>
+            <div style={{ background: '#1e293b', padding: '2rem', borderRadius: '8px', border: '1px solid #334155', textAlign: 'center' }}>
+              <p style={{ color: '#94a3b8', fontSize: '1.1rem' }}>Módulo de Puntos de Venta y Stock en preparación.</p>
+              <p style={{ color: '#64748b', fontSize: '0.9rem' }}>Aquí podrás armar carritos de repuestos, aplicar descuentos y registrar ventas a clientes.</p>
+            </div>
+          </div>
+        )}
 
-              <div>
-                <label className="text-xs font-semibold text-slate-600 block mb-1">Nombre / Razón Social *</label>
-                <input
-                  type="text"
-                  required
-                  placeholder="Se autocompleta con CUIT..."
-                  className="w-full p-2 border border-slate-300 rounded-lg text-sm"
-                  value={nuevoCliente.razon_social}
-                  onChange={(e) => setNuevoCliente({ ...nuevoCliente, razon_social: e.target.value })}
-                />
-              </div>
+        {/* PESTAÑA 2: CLIENTES Y CUENTAS CORRIENTES */}
+        {activeTab === 'clientes' && (
+          <div>
+            <h2 style={{ color: '#cbd5e1', marginBottom: '1.5rem' }}>Gestión de Clientes y Cuentas Corrientes</h2>
 
-              <div className="grid grid-cols-2 gap-2">
-                <div>
-                  <label className="text-xs font-semibold text-slate-600 block mb-1">Condición IVA</label>
-                  <select
-                    className="w-full p-2 border border-slate-300 rounded-lg text-sm bg-white"
-                    value={nuevoCliente.condicion_iva}
-                    onChange={(e) => setNuevoCliente({ ...nuevoCliente, condicion_iva: e.target.value })}
-                  >
-                    <option value="Responsable Inscripto">Responsable Inscripto</option>
-                    <option value="Monotributo">Monotributo</option>
-                    <option value="Consumidor Final">Consumidor Final</option>
-                    <option value="Exento">Exento</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="text-xs font-semibold text-slate-600 block mb-1">Localidad / Zona</label>
-                  <input
-                    type="text"
-                    className="w-full p-2 border border-slate-300 rounded-lg text-sm"
-                    value={nuevoCliente.direccion}
-                    onChange={(e) => setNuevoCliente({ ...nuevoCliente, direccion: e.target.value })}
-                  />
-                </div>
-              </div>
+            {/* FORMULARIO CLIENTE */}
+            <div style={{ background: '#1e293b', padding: '1.5rem', borderRadius: '8px', border: '1px solid #334155', marginBottom: '2rem' }}>
+              <h3 style={{ marginTop: 0, color: '#f59e0b', fontSize: '1.1rem' }}>Nuevo Cliente</h3>
 
-              <div className="grid grid-cols-2 gap-2">
-                <div>
-                  <label className="text-xs font-semibold text-slate-600 block mb-1">Teléfono</label>
-                  <input
-                    type="text"
-                    placeholder="2923..."
-                    className="w-full p-2 border border-slate-300 rounded-lg text-sm"
-                    value={nuevoCliente.telefono}
-                    onChange={(e) => setNuevoCliente({ ...nuevoCliente, telefono: e.target.value })}
-                  />
-                </div>
-                <div>
-                  <label className="text-xs font-semibold text-slate-600 block mb-1">Email</label>
-                  <input
-                    type="email"
-                    placeholder="cliente@email.com"
-                    className="w-full p-2 border border-slate-300 rounded-lg text-sm"
-                    value={nuevoCliente.email}
-                    onChange={(e) => setNuevoCliente({ ...nuevoCliente, email: e.target.value })}
-                  />
-                </div>
-              </div>
-
-              <button
-                type="submit"
-                className="w-full bg-slate-900 hover:bg-slate-800 text-white font-semibold p-2.5 rounded-lg text-sm flex justify-center items-center gap-2 mt-2"
-              >
-                <Plus size={16} /> Guardar Cliente
-              </button>
               {mensajeCliente && (
-                <div className="text-xs text-green-700 bg-green-50 p-2 rounded-lg border border-green-200 flex items-center gap-1">
-                  <Check size={14} /> {mensajeCliente}
+                <div style={{ padding: '0.5rem 1rem', borderRadius: '6px', marginBottom: '1rem', background: mensajeCliente.includes('éxito') ? '#064e3b' : '#450a0a', color: mensajeCliente.includes('éxito') ? '#a7f3d0' : '#fca5a5', fontSize: '0.9rem' }}>
+                  {mensajeCliente}
                 </div>
               )}
-            </form>
-          </div>
 
-          <div className="md:col-span-2 bg-white p-5 rounded-xl shadow-sm border border-slate-200">
-            <h2 className="font-bold text-slate-800 mb-4">Cartera de Clientes</h2>
-            <div className="overflow-x-auto">
-              <table className="w-full text-left text-sm">
-                <thead className="bg-slate-100 text-slate-700">
-                  <tr>
-                    <th className="p-2.5">Cliente / Contacto</th>
-                    <th className="p-2.5">CUIT</th>
-                    <th className="p-2.5">Localidad</th>
-                    <th className="p-2.5">Riesgo BCRA</th>
-                    <th className="p-2.5 text-center">Acción</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100">
-                  {clientes.map((c) => {
-                    const bcra = bcraData[c.id];
-                    const sitInfo = bcra ? SITUACION_BCRA[bcra.maxSit] || SITUACION_BCRA[1] : null;
+              <form onSubmit={guardarCliente} style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1rem' }}>
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.8rem', color: '#94a3b8', marginBottom: '0.25rem' }}>CUIT / CUIL</label>
+                  <div style={{ display: 'flex', gap: '0.5rem' }}>
+                    <input 
+                      type="text" 
+                      placeholder="20123456789" 
+                      value={cuit} 
+                      onChange={(e) => setCuit(e.target.value)} 
+                      style={{ width: '100%', padding: '0.5rem', borderRadius: '4px', border: '1px solid #475569', background: '#0f172a', color: '#fff' }}
+                    />
+                    <button type="button" onClick={buscarCuit} disabled={loadingCuit} style={{ background: '#3b82f6', color: '#fff', border: 'none', borderRadius: '4px', padding: '0.5rem 0.75rem', cursor: 'pointer', whiteSpace: 'nowrap', fontSize: '0.8rem' }}>
+                      {loadingCuit ? '...' : 'Buscar'}
+                    </button>
+                  </div>
+                </div>
 
-                    return (
-                      <tr key={c.id} className="hover:bg-slate-50">
-                        <td className="p-2.5">
-                          <div className="font-semibold text-slate-800">{c.razon_social}</div>
-                          <div className="text-xs text-slate-500">
-                            {c.condicion_iva} {c.email ? `• ${c.email}` : ''} {c.telefono ? `• ${c.telefono}` : ''}
-                          </div>
-                        </td>
-                        <td className="p-2.5 font-mono text-slate-700">{c.cuit_dni || 'S/D'}</td>
-                        <td className="p-2.5 text-slate-600">{c.direccion || '-'}</td>
-                        <td className="p-2.5">
-                          {bcra ? (
-                            <span className={`px-2 py-0.5 rounded text-xs font-bold border ${sitInfo.color}`}>
-                              {sitInfo.nombre}
-                            </span>
-                          ) : (
-                            <span className="text-xs text-slate-400">Sin consultar</span>
-                          )}
-                        </td>
-                        <td className="p-2.5 text-center">
-                          {c.cuit_dni && (
-                            <button
-                              onClick={() => consultarBCRA(c.cuit_dni, c.id)}
-                              disabled={cargandoBcra === c.id}
-                              className="bg-slate-800 hover:bg-slate-900 text-white text-xs px-2 py-1 rounded flex items-center gap-1 mx-auto"
-                            >
-                              {cargandoBcra === c.id ? <RefreshCw size={12} className="animate-spin" /> : <ShieldAlert size={12} className="text-amber-400" />}
-                              BCRA
-                            </button>
-                          )}
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        </div>
-      )}
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.8rem', color: '#94a3b8', marginBottom: '0.25rem' }}>Razón Social / Nombre</label>
+                  <input 
+                    type="text" 
+                    value={razonSocial} 
+                    onChange={(e) => setRazonSocial(e.target.value)} 
+                    style={{ width: '100%', padding: '0.5rem', borderRadius: '4px', border: '1px solid #475569', background: '#0f172a', color: '#fff' }}
+                  />
+                </div>
 
-      {pestana === 'pedidos' && (
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          <div className="lg:col-span-2 space-y-4 print:hidden">
-            <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-200 space-y-3">
-              <div className="relative">
-                <Search className="absolute left-3 top-3 text-slate-400" size={18} />
-                <input
-                  type="text"
-                  placeholder="Buscar por SKU, OEM, Nombre o Medida..."
-                  className="w-full pl-10 pr-4 py-2 border border-slate-300 rounded-lg text-sm"
-                  value={busqueda}
-                  onChange={(e) => setBusqueda(e.target.value)}
-                />
-              </div>
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.8rem', color: '#94a3b8', marginBottom: '0.25rem' }}>Email</label>
+                  <input 
+                    type="email" 
+                    value={email} 
+                    onChange={(e) => setEmail(e.target.value)} 
+                    style={{ width: '100%', padding: '0.5rem', borderRadius: '4px', border: '1px solid #475569', background: '#0f172a', color: '#fff' }}
+                  />
+                </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                <select
-                  className="p-2 border border-slate-300 rounded-lg text-sm bg-slate-50"
-                  value={catSeleccionada}
-                  onChange={(e) => {
-                    setCatSeleccionada(e.target.value);
-                    setSubCatSeleccionada('');
-                  }}
-                >
-                  <option value="">Todas las Categorías</option>
-                  {categorias.map((c) => (
-                    <option key={c.id} value={c.id}>{c.nombre}</option>
-                  ))}
-                </select>
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.8rem', color: '#94a3b8', marginBottom: '0.25rem' }}>Teléfono</label>
+                  <input 
+                    type="text" 
+                    value={telefono} 
+                    onChange={(e) => setTelefono(e.target.value)} 
+                    style={{ width: '100%', padding: '0.5rem', borderRadius: '4px', border: '1px solid #475569', background: '#0f172a', color: '#fff' }}
+                  />
+                </div>
 
-                <select
-                  className="p-2 border border-slate-300 rounded-lg text-sm bg-slate-50"
-                  value={subCatSeleccionada}
-                  onChange={(e) => setSubCatSeleccionada(e.target.value)}
-                >
-                  <option value="">Todas las Subcategorías</option>
-                  {subcategorias
-                    .filter((s) => !catSeleccionada || s.categoria_id == catSeleccionada)
-                    .map((s) => (
-                      <option key={s.id} value={s.id}>{s.nombre}</option>
-                    ))}
-                </select>
-              </div>
+                <div style={{ gridColumn: '1 / -1' }}>
+                  <label style={{ display: 'block', fontSize: '0.8rem', color: '#94a3b8', marginBottom: '0.25rem' }}>Dirección</label>
+                  <input 
+                    type="text" 
+                    value={direccion} 
+                    onChange={(e) => setDireccion(e.target.value)} 
+                    style={{ width: '100%', padding: '0.5rem', borderRadius: '4px', border: '1px solid #475569', background: '#0f172a', color: '#fff' }}
+                  />
+                </div>
+
+                <div style={{ gridColumn: '1 / -1', textAlign: 'right' }}>
+                  <button type="submit" style={{ background: '#f59e0b', color: '#0f172a', border: 'none', padding: '0.6rem 1.5rem', borderRadius: '6px', fontWeight: 'bold', cursor: 'pointer' }}>
+                    + Guardar Cliente
+                  </button>
+                </div>
+              </form>
             </div>
 
-            <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
-              <table className="w-full text-left text-sm">
-                <thead className="bg-slate-800 text-slate-200">
-                  <tr>
-                    <th className="p-3">Código / OEM</th>
-                    <th className="p-3">Descripción</th>
-                    <th className="p-3">Precio</th>
-                    <th className="p-3">Stock</th>
-                    <th className="p-3 text-center">Acción</th>
+            {/* TABLA DE CLIENTES */}
+            <div style={{ background: '#1e293b', borderRadius: '8px', border: '1px solid #334155', overflow: 'hidden' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '0.9rem' }}>
+                <thead>
+                  <tr style={{ background: '#0f172a', color: '#f59e0b', borderBottom: '1px solid #334155' }}>
+                    <th style={{ padding: '0.75rem 1rem' }}>Razón Social</th>
+                    <th style={{ padding: '0.75rem 1rem' }}>CUIT</th>
+                    <th style={{ padding: '0.75rem 1rem' }}>Teléfono</th>
+                    <th style={{ padding: '0.75rem 1rem' }}>Email</th>
+                    <th style={{ padding: '0.75rem 1rem' }}>Dirección</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-100">
-                  {productosFiltrados.map((p) => (
-                    <tr key={p.id} className="hover:bg-slate-50">
-                      <td className="p-3">
-                        <div className="font-semibold text-slate-800">{p.codigo_sku}</div>
-                        {p.codigo_oem && <div className="text-xs text-slate-400">OEM: {p.codigo_oem}</div>}
-                      </td>
-                      <td className="p-3">
-                        <div>{p.nombre}</div>
-                        {p.medida && <span className="text-xs bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded">{p.medida}</span>}
-                      </td>
-                      <td className="p-3 font-semibold text-slate-700">${p.precio_venta}</td>
-                      <td className="p-3">
-                        <span className={`px-2 py-1 rounded-full text-xs font-semibold ${p.stock_actual <= p.stock_minimo ? 'bg-red-100 text-red-700' : 'bg-green-100 text-green-700'}`}>
-                          {p.stock_actual} un.
-                        </span>
-                      </td>
-                      <td className="p-3 text-center">
-                        <button
-                          onClick={() => agregarAlPedido(p)}
-                          className="bg-slate-900 hover:bg-slate-800 text-white p-1.5 rounded-lg text-xs flex items-center gap-1 mx-auto"
-                        >
-                          <Plus size={14} /> Agregar
-                        </button>
+                <tbody>
+                  {clientes.length === 0 ? (
+                    <tr>
+                      <td colSpan="5" style={{ padding: '1.5rem', textAlign: 'center', color: '#64748b' }}>
+                        No hay clientes registrados aún.
                       </td>
                     </tr>
-                  ))}
+                  ) : (
+                    clientes.map((c) => (
+                      <tr key={c.id} style={{ borderBottom: '1px solid #334155' }}>
+                        <td style={{ padding: '0.75rem 1rem', fontWeight: 'bold' }}>{c.razon_social}</td>
+                        <td style={{ padding: '0.75rem 1rem', color: '#94a3b8' }}>{c.cuit}</td>
+                        <td style={{ padding: '0.75rem 1rem', color: '#94a3b8' }}>{c.telefono || '-'}</td>
+                        <td style={{ padding: '0.75rem 1rem', color: '#94a3b8' }}>{c.email || '-'}</td>
+                        <td style={{ padding: '0.75rem 1rem', color: '#94a3b8' }}>{c.direccion || '-'}</td>
+                      </tr>
+                    ))
+                  )}
                 </tbody>
               </table>
             </div>
+
           </div>
+        )}
 
-          <div className="bg-white p-5 rounded-xl shadow-sm border border-slate-200 space-y-4 print:shadow-none print:border-none print:w-full">
-            <div className="flex justify-between items-center border-b pb-3">
-              <h2 className="font-bold text-slate-800 flex items-center gap-2">
-                <ShoppingBag size={18} /> Presupuesto / Pedido
-              </h2>
-              <button
-                onClick={() => window.print()}
-                className="bg-amber-500 hover:bg-amber-600 text-slate-950 font-semibold px-3 py-1.5 rounded-lg text-xs flex items-center gap-1 print:hidden"
-              >
-                <Printer size={14} /> Imprimir Comprobante
-              </button>
-            </div>
-
-            <div>
-              <label className="text-xs font-semibold text-slate-600 block mb-1">Seleccionar Cliente:</label>
-              <select
-                className="w-full p-2 border border-slate-300 rounded-lg text-sm bg-slate-50 print:hidden"
-                value={clienteSeleccionado ? clienteSeleccionado.id : ''}
-                onChange={(e) => {
-                  const cli = clientes.find((c) => c.id == e.target.value);
-                  setClienteSeleccionado(cli || null);
-                  if (cli && cli.cuit_dni) consultarBCRA(cli.cuit_dni, cli.id);
-                }}
-              >
-                <option value="">-- Cliente Mostrador / Contado --</option>
-                {clientes.map((c) => (
-                  <option key={c.id} value={c.id}>{c.razon_social} {c.cuit_dni ? `(${c.cuit_dni})` : ''}</option>
-                ))}
-              </select>
-
-              <div className="mt-2 p-3 bg-slate-50 rounded-lg border border-slate-200 text-xs text-slate-700 print:bg-white print:p-0 print:border-none space-y-1">
-                <div className="font-bold text-sm text-slate-900 flex justify-between items-center">
-                  <span>{clienteSeleccionado ? clienteSeleccionado.razon_social : 'Cliente Mostrador / Contado'}</span>
-                  {clienteSeleccionado && bcraData[clienteSeleccionado.id] && (
-                    <span className={`px-2 py-0.5 rounded text-[10px] font-bold border ${SITUACION_BCRA[bcraData[clienteSeleccionado.id].maxSit]?.color}`}>
-                      {SITUACION_BCRA[bcraData[clienteSeleccionado.id].maxSit]?.nombre}
-                    </span>
-                  )}
-                </div>
-                {clienteSeleccionado && (
-                  <div className="grid grid-cols-2 gap-1 text-slate-600">
-                    <div>CUIT: {clienteSeleccionado.cuit_dni || 'S/D'}</div>
-                    <div>Cond. IVA: {clienteSeleccionado.condicion_iva}</div>
-                    <div>Tel: {clienteSeleccionado.telefono || 'S/D'}</div>
-                    <div>Email: {clienteSeleccionado.email || 'S/D'}</div>
-                    <div>Localidad: {clienteSeleccionado.direccion || 'S/D'}</div>
-                  </div>
-                )}
-              </div>
-            </div>
-
-            <div className="space-y-2 max-h-[350px] overflow-y-auto print:max-h-none">
-              {pedido.length === 0 ? (
-                <div className="text-center py-8 text-slate-400 text-sm">Sin productos agregados.</div>
-              ) : (
-                pedido.map((item) => (
-                  <div key={item.id} className="flex justify-between items-center bg-slate-50 p-2 rounded-lg text-sm border border-slate-100 print:bg-white print:border-b">
-                    <div>
-                      <div className="font-medium text-slate-800">{item.nombre}</div>
-                      <div className="text-xs text-slate-500">${item.precio_venta} x {item.cantidad} un.</div>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <span className="font-bold text-slate-800">${item.precio_venta * item.cantidad}</span>
-                      <button onClick={() => quitarDelPedido(item.id)} className="text-red-500 hover:text-red-700 print:hidden">
-                        <Trash2 size={14} />
-                      </button>
-                    </div>
-                  </div>
-                ))
-              )}
-            </div>
-
-            <div className="border-t pt-3 space-y-1">
-              <div className="flex justify-between font-bold text-lg text-slate-900">
-                <span>Total:</span>
-                <span>${calcularTotal()}</span>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
+      </main>
     </div>
   );
 }
