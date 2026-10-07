@@ -39,7 +39,7 @@ export async function GET(request) {
       }
     }
 
-    return NextResponse.json({ error: 'No se encontraron datos' }, { status: 444 });
+    return NextResponse.json({ error: 'No se encontraron datos' }, { status: 404 });
   } catch (error) {
     return NextResponse.json({ error: 'Error en la consulta' }, { status: 500 });
   }
