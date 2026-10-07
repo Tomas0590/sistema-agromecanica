@@ -3,9 +3,9 @@ import React, { useState, useEffect } from 'react';
 import { createClient } from '@supabase/supabase-js';
 import { Search, Printer, Plus, Trash2, ShoppingBag, Package, Users, UserPlus, Check, ShieldAlert, RefreshCw } from 'lucide-react';
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
-const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
-const supabase = createClient(supabaseUrl, supabaseKey);
+const SUPABASE_URL = 'https://tqfpcogdvhtvvhdqewdg.supabase.co';
+const SUPABASE_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'sb_publishable_MchMROFkf12BgkCahzrC5w_qAlaGXKr';
+const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 
 const SITUACION_BCRA = {
   1: { nombre: 'Sit. 1 - Normal', color: 'bg-emerald-100 text-emerald-800 border-emerald-300' },
