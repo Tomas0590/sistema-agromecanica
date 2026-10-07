@@ -146,11 +146,28 @@ export default function Home() {
     e.preventDefault();
     if (!nuevoCliente.razon_social) return;
 
-    const { data, error } = await supabase.from('clientes').insert([nuevoCliente]).select();
+    setMensajeCliente('Guardando...');
 
-    if (!error && data) {
-      setMensajeCliente('¡Cliente guardado exitosamente!');
-      setClientes([...clientes, data[0]]);
+    const clienteAInsertar = {
+      razon_social: nuevoCliente.razon_social,
+      cuit_dni: nuevoCliente.cuit_dni || null,
+      condicion_iva: nuevoCliente.condicion_iva || 'Responsable Inscripto',
+      telefono: nuevoCliente.telefono || null,
+      email: nuevoCliente.email || null,
+      direccion: nuevoCliente.direccion || null
+    };
+
+    const { data, error } = await supabase
+      .from('clientes')
+      .insert([clienteAInsertar])
+      .select();
+
+    if (error) {
+      console.error('Error al guardar cliente:', error);
+      setMensajeCliente(`Error: ${error.message}`);
+    } else if (data) {
+      setMensajeCliente('¡Cliente guardado con éxito!');
+      setClientes((prev) => [...prev, data[0]]);
       setNuevoCliente({
         razon_social: '',
         cuit_dni: '',
@@ -159,10 +176,9 @@ export default function Home() {
         email: '',
         direccion: 'Carhué'
       });
-      setTimeout(() => setMensajeCliente(''), 3000);
+      setTimeout(() => setMensajeCliente(''), 4000);
     }
   };
-
   const productosFiltrados = productos.filter((p) => {
     const coincideTexto = 
       p.nombre.toLowerCase().includes(busqueda.toLowerCase()) ||
