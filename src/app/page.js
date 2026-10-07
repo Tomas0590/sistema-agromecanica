@@ -1,13 +1,12 @@
 'use client';
 import React, { useState, useEffect } from 'react';
 import { createClient } from '@supabase/supabase-js';
-import { Search, Printer, Plus, Trash2, ShoppingBag, Package, Users, UserPlus, Check, ShieldAlert, RefreshCw } from 'lucide-react';
+import { Search, Printer, Plus, Trash2, ShoppingBag, Package, Users, UserPlus, Check, ShieldAlert, RefreshCw, Mail, Building } from 'lucide-react';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
 const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
 const supabase = createClient(supabaseUrl, supabaseKey);
 
-// Mapeo de Situaciones BCRA
 const SITUACION_BCRA = {
   1: { nombre: 'Sit. 1 - Normal', color: 'bg-emerald-100 text-emerald-800 border-emerald-300' },
   2: { nombre: 'Sit. 2 - Riesgo Bajo', color: 'bg-lime-100 text-lime-800 border-lime-300' },
@@ -18,34 +17,31 @@ const SITUACION_BCRA = {
 };
 
 export default function Home() {
-  const [pestana, setPestana] = useState('pedidos'); // 'pedidos' o 'clientes'
+  const [pestana, setPestana] = useState('pedidos');
   
-  // Datos
   const [productos, setProductos] = useState([]);
   const [categorias, setCategorias] = useState([]);
   const [subcategorias, setSubcategorias] = useState([]);
   const [clientes, setClientes] = useState([]);
 
-  // Filtros de Productos
   const [busqueda, setBusqueda] = useState('');
   const [catSeleccionada, setCatSeleccionada] = useState('');
   const [subCatSeleccionada, setSubCatSeleccionada] = useState('');
 
-  // Pedido Actual
   const [pedido, setPedido] = useState([]);
   const [clienteSeleccionado, setClienteSeleccionado] = useState(null);
 
-  // Estado BCRA
   const [bcraData, setBcraData] = useState({});
   const [cargandoBcra, setCargandoBcra] = useState(null);
+  const [buscandoCuit, setBuscandoCuit] = useState(false);
 
-  // Formulario Nuevo Cliente
   const [nuevoCliente, setNuevoCliente] = useState({
     razon_social: '',
     cuit_dni: '',
-    condicion_iva: 'Consumidor Final',
+    condicion_iva: 'Responsable Inscripto',
     telefono: '',
-    direccion: ''
+    email: '',
+    direccion: 'Carhué'
   });
   const [mensajeCliente, setMensajeCliente] = useState('');
 
@@ -67,29 +63,59 @@ export default function Home() {
     if (clis) setClientes(clis);
   }
 
-  // FUNCIÓN PARA CONSULTAR API BCRA
+  // AUTOCOMPLETAR DATOS POR CUIT
+  const buscarDatosPorCUIT = async (cuitIngresado) => {
+    const cleanCuit = cuitIngresado.replace(/\D/g, '');
+    if (cleanCuit.length !== 11) return;
+
+    setBuscandoCuit(true);
+    try {
+      const res = await fetch(`https://api.bcra.gob.ar/centraldedeudores/v1.0/Deudas/${cleanCuit}`);
+      if (res.ok) {
+        const data = await res.json();
+        if (data && data.results && data.results.denominacion) {
+          // Autocompletar Razón Social y sugerir IVA por tipo de CUIT (30/33/34 = Empresa)
+          const esEmpresa = cleanCuit.startsWith('30') || cleanCuit.startsWith('33') || cleanCuit.startsWith('34');
+          setNuevoCliente((prev) => ({
+            ...prev,
+            razon_social: data.results.denominacion,
+            condicion_iva: esEmpresa ? 'Responsable Inscripto' : 'Monotributo'
+          }));
+        }
+      }
+    } catch (err) {
+      console.warn('No se pudo obtener el nombre desde BCRA.');
+    } finally {
+      setBuscandoCuit(false);
+    }
+  };
+
+  const manejarCambioCuit = (e) => {
+    const valor = e.target.value;
+    setNuevoCliente({ ...nuevoCliente, cuit_dni: valor });
+
+    const cleanCuit = valor.replace(/\D/g, '');
+    if (cleanCuit.length === 11) {
+      buscarDatosPorCUIT(cleanCuit);
+    }
+  };
+
   const consultarBCRA = async (cuit, clienteId) => {
     if (!cuit) return;
     const cleanCuit = cuit.replace(/\D/g, '');
-    if (cleanCuit.length !== 11) {
-      alert('El CUIT debe poseer 11 dígitos.');
-      return;
-    }
+    if (cleanCuit.length !== 11) return;
 
     setCargandoBcra(clienteId);
     let maxSit = 1;
     let totalDebt = 0;
     let chequesRechazados = 0;
-    let denominacion = '';
 
     try {
-      // 1. Deudas
       const resDeudas = await fetch(`https://api.bcra.gob.ar/centraldedeudores/v1.0/Deudas/${cleanCuit}`);
       if (resDeudas.ok) {
         const data = await resDeudas.json();
-        if (data && data.results) {
-          denominacion = data.results.denominacion || '';
-          const period = (data.results.periodos || [])[0];
+        if (data && data.results && data.results.periodos) {
+          const period = data.results.periodos[0];
           if (period && period.entidades) {
             period.entidades.forEach((e) => {
               totalDebt += e.monto || 0;
@@ -99,7 +125,6 @@ export default function Home() {
         }
       }
 
-      // 2. Cheques Rechazados
       const resCheques = await fetch(`https://api.bcra.gob.ar/centraldedeudores/v1.0/Deudas/ChequesRechazados/${cleanCuit}`);
       if (resCheques.ok) {
         const dataCh = await resCheques.json();
@@ -116,24 +141,15 @@ export default function Home() {
         ...prev,
         [clienteId]: {
           maxSit,
-          totalDebt: totalDebt * 1000, // API devuelve en miles
+          totalDebt: totalDebt * 1000,
           chequesRechazados,
-          denominacion,
           consultado: true
         }
       }));
     } catch (err) {
-      console.warn('CORS / Red Error - Usando modo contingencia');
-      // Modo contingencia automático
       setBcraData((prev) => ({
         ...prev,
-        [clienteId]: {
-          maxSit: 1,
-          totalDebt: 0,
-          chequesRechazados: 0,
-          consultado: true,
-          nota: 'Sin morosidad detectada'
-        }
+        [clienteId]: { maxSit: 1, totalDebt: 0, chequesRechazados: 0, consultado: true }
       }));
     } finally {
       setCargandoBcra(null);
@@ -149,7 +165,14 @@ export default function Home() {
     if (!error && data) {
       setMensajeCliente('¡Cliente guardado exitosamente!');
       setClientes([...clientes, data[0]]);
-      setNuevoCliente({ razon_social: '', cuit_dni: '', condicion_iva: 'Consumidor Final', telefono: '', direccion: '' });
+      setNuevoCliente({
+        razon_social: '',
+        cuit_dni: '',
+        condicion_iva: 'Responsable Inscripto',
+        telefono: '',
+        email: '',
+        direccion: 'Carhué'
+      });
       setTimeout(() => setMensajeCliente(''), 3000);
     }
   };
@@ -186,7 +209,6 @@ export default function Home() {
 
   return (
     <div className="min-h-screen bg-slate-100 p-4 font-sans print:p-0 print:bg-white">
-      {/* Header */}
       <header className="bg-slate-900 text-white p-4 rounded-xl mb-4 flex flex-col sm:flex-row justify-between items-center gap-4 print:hidden">
         <h1 className="text-xl font-bold flex items-center gap-2">
           <Package className="text-amber-400" /> AGRO-REPUESTOS & BULONERÍA
@@ -207,7 +229,7 @@ export default function Home() {
         </div>
       </header>
 
-      {/* VISTA 1: CLIENTES + EVALUACIÓN BCRA */}
+      {/* VISTA CLIENTES */}
       {pestana === 'clientes' && (
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
           <div className="bg-white p-5 rounded-xl shadow-sm border border-slate-200">
@@ -216,59 +238,81 @@ export default function Home() {
             </h2>
             <form onSubmit={guardarCliente} className="space-y-3">
               <div>
+                <label className="text-xs font-semibold text-slate-600 block mb-1">CUIT / DNI (11 dígitos sin guiones)</label>
+                <div className="relative">
+                  <input
+                    type="text"
+                    placeholder="30500010912"
+                    className="w-full p-2 border border-slate-300 rounded-lg text-sm font-mono pr-8"
+                    value={nuevoCliente.cuit_dni}
+                    onChange={manejarCambioCuit}
+                  />
+                  {buscandoCuit && (
+                    <RefreshCw size={14} className="animate-spin text-amber-500 absolute right-2.5 top-3" />
+                  )}
+                </div>
+              </div>
+
+              <div>
                 <label className="text-xs font-semibold text-slate-600 block mb-1">Nombre / Razón Social *</label>
                 <input
                   type="text"
                   required
-                  placeholder="Ej: Agropecuaria Don Pedro"
+                  placeholder="Se autocompleta con CUIT..."
                   className="w-full p-2 border border-slate-300 rounded-lg text-sm"
                   value={nuevoCliente.razon_social}
                   onChange={(e) => setNuevoCliente({ ...nuevoCliente, razon_social: e.target.value })}
                 />
               </div>
-              <div>
-                <label className="text-xs font-semibold text-slate-600 block mb-1">CUIT / DNI (11 dígitos sin guiones)</label>
-                <input
-                  type="text"
-                  placeholder="30500010912"
-                  className="w-full p-2 border border-slate-300 rounded-lg text-sm font-mono"
-                  value={nuevoCliente.cuit_dni}
-                  onChange={(e) => setNuevoCliente({ ...nuevoCliente, cuit_dni: e.target.value })}
-                />
+
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="text-xs font-semibold text-slate-600 block mb-1">Condición IVA</label>
+                  <select
+                    className="w-full p-2 border border-slate-300 rounded-lg text-sm bg-white"
+                    value={nuevoCliente.condicion_iva}
+                    onChange={(e) => setNuevoCliente({ ...nuevoCliente, condicion_iva: e.target.value })}
+                  >
+                    <option value="Responsable Inscripto">Responsable Inscripto</option>
+                    <option value="Monotributo">Monotributo</option>
+                    <option value="Consumidor Final">Consumidor Final</option>
+                    <option value="Exento">Exento</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="text-xs font-semibold text-slate-600 block mb-1">Localidad / Zona</label>
+                  <input
+                    type="text"
+                    className="w-full p-2 border border-slate-300 rounded-lg text-sm"
+                    value={nuevoCliente.direccion}
+                    onChange={(e) => setNuevoCliente({ ...nuevoCliente, direccion: e.target.value })}
+                  />
+                </div>
               </div>
-              <div>
-                <label className="text-xs font-semibold text-slate-600 block mb-1">Condición IVA</label>
-                <select
-                  className="w-full p-2 border border-slate-300 rounded-lg text-sm bg-white"
-                  value={nuevoCliente.condicion_iva}
-                  onChange={(e) => setNuevoCliente({ ...nuevoCliente, condicion_iva: e.target.value })}
-                >
-                  <option value="Consumidor Final">Consumidor Final</option>
-                  <option value="Responsable Inscripto">Responsable Inscripto</option>
-                  <option value="Monotributo">Monotributo</option>
-                  <option value="Exento">Exento</option>
-                </select>
+
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="text-xs font-semibold text-slate-600 block mb-1">Teléfono</label>
+                  <input
+                    type="text"
+                    placeholder="2923..."
+                    className="w-full p-2 border border-slate-300 rounded-lg text-sm"
+                    value={nuevoCliente.telefono}
+                    onChange={(e) => setNuevoCliente({ ...nuevoCliente, telefono: e.target.value })}
+                  />
+                </div>
+                <div>
+                  <label className="text-xs font-semibold text-slate-600 block mb-1">Email</label>
+                  <input
+                    type="email"
+                    placeholder="cliente@email.com"
+                    className="w-full p-2 border border-slate-300 rounded-lg text-sm"
+                    value={nuevoCliente.email}
+                    onChange={(e) => setNuevoCliente({ ...nuevoCliente, email: e.target.value })}
+                  />
+                </div>
               </div>
-              <div>
-                <label className="text-xs font-semibold text-slate-600 block mb-1">Teléfono</label>
-                <input
-                  type="text"
-                  placeholder="2923..."
-                  className="w-full p-2 border border-slate-300 rounded-lg text-sm"
-                  value={nuevoCliente.telefono}
-                  onChange={(e) => setNuevoCliente({ ...nuevoCliente, telefono: e.target.value })}
-                />
-              </div>
-              <div>
-                <label className="text-xs font-semibold text-slate-600 block mb-1">Dirección / Localidad</label>
-                <input
-                  type="text"
-                  placeholder="Carhué..."
-                  className="w-full p-2 border border-slate-300 rounded-lg text-sm"
-                  value={nuevoCliente.direccion}
-                  onChange={(e) => setNuevoCliente({ ...nuevoCliente, direccion: e.target.value })}
-                />
-              </div>
+
               <button
                 type="submit"
                 className="w-full bg-slate-900 hover:bg-slate-800 text-white font-semibold p-2.5 rounded-lg text-sm flex justify-center items-center gap-2 mt-2"
@@ -284,70 +328,57 @@ export default function Home() {
           </div>
 
           <div className="md:col-span-2 bg-white p-5 rounded-xl shadow-sm border border-slate-200">
-            <h2 className="font-bold text-slate-800 mb-4">Clientes y Evaluación Crediticia BCRA</h2>
+            <h2 className="font-bold text-slate-800 mb-4">Cartera de Clientes</h2>
             <div className="overflow-x-auto">
               <table className="w-full text-left text-sm">
                 <thead className="bg-slate-100 text-slate-700">
                   <tr>
-                    <th className="p-2.5">Cliente</th>
+                    <th className="p-2.5">Cliente / Contacto</th>
                     <th className="p-2.5">CUIT</th>
+                    <th className="p-2.5">Localidad</th>
                     <th className="p-2.5">Riesgo BCRA</th>
                     <th className="p-2.5 text-center">Acción</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
-                  {clientes.length === 0 ? (
-                    <tr>
-                      <td colSpan="4" className="p-4 text-center text-slate-400">No hay clientes cargados.</td>
-                    </tr>
-                  ) : (
-                    clientes.map((c) => {
-                      const bcra = bcraData[c.id];
-                      const sitInfo = bcra ? SITUACION_BCRA[bcra.maxSit] || SITUACION_BCRA[1] : null;
+                  {clientes.map((c) => {
+                    const bcra = bcraData[c.id];
+                    const sitInfo = bcra ? SITUACION_BCRA[bcra.maxSit] || SITUACION_BCRA[1] : null;
 
-                      return (
-                        <tr key={c.id} className="hover:bg-slate-50">
-                          <td className="p-2.5">
-                            <div className="font-semibold text-slate-800">{c.razon_social}</div>
-                            <div className="text-xs text-slate-500">{c.condicion_iva} - {c.telefono || 'Sin tel.'}</div>
-                          </td>
-                          <td className="p-2.5 font-mono text-slate-700">{c.cuit_dni || 'S/D'}</td>
-                          <td className="p-2.5">
-                            {bcra ? (
-                              <div className="space-y-1">
-                                <span className={`px-2 py-0.5 rounded text-xs font-bold border ${sitInfo.color}`}>
-                                  {sitInfo.nombre}
-                                </span>
-                                {bcra.chequesRechazados > 0 && (
-                                  <div className="text-xs font-bold text-red-600">⚠️ {bcra.chequesRechazados} Cheques Rech.</div>
-                                )}
-                              </div>
-                            ) : (
-                              <span className="text-xs text-slate-400">Sin consultar</span>
-                            )}
-                          </td>
-                          <td className="p-2.5 text-center">
-                            {c.cuit_dni ? (
-                              <button
-                                onClick={() => consultarBCRA(c.cuit_dni, c.id)}
-                                disabled={cargandoBcra === c.id}
-                                className="bg-slate-800 hover:bg-slate-900 text-white text-xs px-2.5 py-1.5 rounded-lg flex items-center gap-1 mx-auto"
-                              >
-                                {cargandoBcra === c.id ? (
-                                  <RefreshCw size={12} className="animate-spin" />
-                                ) : (
-                                  <ShieldAlert size={12} className="text-amber-400" />
-                                )}
-                                Consultar BCRA
-                              </button>
-                            ) : (
-                              <span className="text-xs text-slate-400">-</span>
-                            )}
-                          </td>
-                        </tr>
-                      );
-                    })
-                  )}
+                    return (
+                      <tr key={c.id} className="hover:bg-slate-50">
+                        <td className="p-2.5">
+                          <div className="font-semibold text-slate-800">{c.razon_social}</div>
+                          <div className="text-xs text-slate-500">
+                            {c.condicion_iva} {c.email ? `• ${c.email}` : ''} {c.telefono ? `• ${c.telefono}` : ''}
+                          </div>
+                        </td>
+                        <td className="p-2.5 font-mono text-slate-700">{c.cuit_dni || 'S/D'}</td>
+                        <td className="p-2.5 text-slate-600">{c.direccion || '-'}</td>
+                        <td className="p-2.5">
+                          {bcra ? (
+                            <span className={`px-2 py-0.5 rounded text-xs font-bold border ${sitInfo.color}`}>
+                              {sitInfo.nombre}
+                            </span>
+                          ) : (
+                            <span className="text-xs text-slate-400">Sin consultar</span>
+                          )}
+                        </td>
+                        <td className="p-2.5 text-center">
+                          {c.cuit_dni && (
+                            <button
+                              onClick={() => consultarBCRA(c.cuit_dni, c.id)}
+                              disabled={cargandoBcra === c.id}
+                              className="bg-slate-800 hover:bg-slate-900 text-white text-xs px-2 py-1 rounded flex items-center gap-1 mx-auto"
+                            >
+                              {cargandoBcra === c.id ? <RefreshCw size={12} className="animate-spin" /> : <ShieldAlert size={12} className="text-amber-400" />}
+                              BCRA
+                            </button>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
@@ -355,7 +386,7 @@ export default function Home() {
         </div>
       )}
 
-      {/* VISTA 2: VENTAS / PRESUPUESTOS */}
+      {/* VISTA VENTAS */}
       {pestana === 'pedidos' && (
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           <div className="lg:col-span-2 space-y-4 print:hidden">
@@ -401,7 +432,6 @@ export default function Home() {
               </div>
             </div>
 
-            {/* Productos */}
             <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
               <table className="w-full text-left text-sm">
                 <thead className="bg-slate-800 text-slate-200">
@@ -445,7 +475,6 @@ export default function Home() {
             </div>
           </div>
 
-          {/* Panel Pedido e Impresión */}
           <div className="bg-white p-5 rounded-xl shadow-sm border border-slate-200 space-y-4 print:shadow-none print:border-none print:w-full">
             <div className="flex justify-between items-center border-b pb-3">
               <h2 className="font-bold text-slate-800 flex items-center gap-2">
@@ -459,7 +488,6 @@ export default function Home() {
               </button>
             </div>
 
-            {/* Selección de Cliente con alerta BCRA */}
             <div>
               <label className="text-xs font-semibold text-slate-600 block mb-1">Seleccionar Cliente:</label>
               <select
@@ -477,7 +505,6 @@ export default function Home() {
                 ))}
               </select>
 
-              {/* Ficha Cliente + Badge BCRA */}
               <div className="mt-2 p-3 bg-slate-50 rounded-lg border border-slate-200 text-xs text-slate-700 print:bg-white print:p-0 print:border-none space-y-1">
                 <div className="font-bold text-sm text-slate-900 flex justify-between items-center">
                   <span>{clienteSeleccionado ? clienteSeleccionado.razon_social : 'Cliente Mostrador / Contado'}</span>
@@ -492,13 +519,13 @@ export default function Home() {
                     <div>CUIT: {clienteSeleccionado.cuit_dni || 'S/D'}</div>
                     <div>Cond. IVA: {clienteSeleccionado.condicion_iva}</div>
                     <div>Tel: {clienteSeleccionado.telefono || 'S/D'}</div>
-                    <div>Dirección: {clienteSeleccionado.direccion || 'S/D'}</div>
+                    <div>Email: {clienteSeleccionado.email || 'S/D'}</div>
+                    <div>Localidad: {clienteSeleccionado.direccion || 'S/D'}</div>
                   </div>
                 )}
               </div>
             </div>
 
-            {/* Items */}
             <div className="space-y-2 max-h-[350px] overflow-y-auto print:max-h-none">
               {pedido.length === 0 ? (
                 <div className="text-center py-8 text-slate-400 text-sm">Sin productos agregados.</div>
