@@ -7,7 +7,6 @@ const SUPABASE_URL = 'https://tqfpcogdvhtvvhdqewdg.supabase.co';
 const SUPABASE_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'sb_publishable_MchMROFkf12BgkCahzrC5w_qAlaGXKr';
 const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 
-// Diccionario de colores y estilos idéntico al HTML
 const SITUATION_STYLES = {
   1: { label: 'Sit 1 - Normal', bg: '#064e3b', color: '#22c55e', border: '#15803d' },
   2: { label: 'Sit 2 - Riesgo Bajo', bg: '#1a2e05', color: '#84cc16', border: '#4d7c0f' },
@@ -18,17 +17,16 @@ const SITUATION_STYLES = {
 };
 
 export default function Home() {
-  // Autenticación
   const [session, setSession] = useState(null);
   const [usernameAuth, setUsernameAuth] = useState('');
   const [passwordAuth, setPasswordAuth] = useState('');
   const [errorAuth, setErrorAuth] = useState('');
 
-  // Navegación
   const [activeTab, setActiveTab] = useState('clientes');
 
-  // Clientes
+  // Estado Clientes y Formulario
   const [clientes, setClientes] = useState([]);
+  const [editingId, setEditingId] = useState(null); // ID si se está editando
   const [cuit, setCuit] = useState('');
   const [razonSocial, setRazonSocial] = useState('');
   const [condicionIva, setCondicionIva] = useState('Monotributo');
@@ -42,7 +40,7 @@ export default function Home() {
   const [resultadosBcra, setResultadosBcra] = useState({});
   const [loadingBcraId, setLoadingBcraId] = useState(null);
 
-  // Modal
+  // Modal Detalle
   const [clienteSeleccionado, setClienteSeleccionado] = useState(null);
 
   useEffect(() => {
@@ -86,41 +84,52 @@ export default function Home() {
     await supabase.auth.signOut();
   };
 
-  // Buscar CUIT en Padrón
+  // Buscar CUIT confiable (BCRA + API AFIP Directa)
   const buscarCuit = async () => {
     const cleanCuit = cuit.replace(/\D/g, '');
     if (cleanCuit.length !== 11) {
-      setMensajeCliente('El CUIT debe tener 11 dígitos.');
+      setMensajeCliente('El CUIT debe contener exactamente 11 dígitos.');
       return;
     }
     setLoadingCuit(true);
     setMensajeCliente('');
 
     try {
-      const targetUrl = `https://api.v2.padron.ar/cuit/${cleanCuit}`;
-      const res = await fetch(`https://corsproxy.io/?${encodeURIComponent(targetUrl)}`);
-      if (res.ok) {
-        const data = await res.json();
-        if (data.denominacion || data.nombre) {
-          setRazonSocial(data.denominacion || data.nombre);
-          if (data.direccion) setDireccion(data.direccion);
-          if (data.condicion_iva || data.iva) {
-            setCondicionIva(data.condicion_iva || data.iva);
-          }
-          setMensajeCliente('✅ Datos autocompletados correctamente.');
+      // 1. Probar API Central de Deudores BCRA
+      const resBcra = await fetch(`https://api.bcra.gob.ar/centraldedeudores/v1.0/Deudas/${cleanCuit}`);
+      if (resBcra.ok) {
+        const dataBcra = await resBcra.json();
+        if (dataBcra?.results?.denominacion) {
+          setRazonSocial(dataBcra.results.denominacion);
+          setMensajeCliente('✅ Razón Social autocompletada desde el BCRA.');
           setLoadingCuit(false);
           return;
         }
       }
-      setMensajeCliente('⚠️ Padrón automático no disponible. Ingresá la Razón Social manualmente.');
+
+      // 2. Probar API AFIP pública directa
+      const resAfip = await fetch(`https://afip.republica.dev/cuit/${cleanCuit}`);
+      if (resAfip.ok) {
+        const dataAfip = await resAfip.json();
+        if (dataAfip.razon_social || dataAfip.nombre) {
+          setRazonSocial(dataAfip.razon_social || dataAfip.nombre);
+          if (dataAfip.domicilio) setDireccion(dataAfip.domicilio);
+          if (dataAfip.condicion_iva) setCondicionIva(dataAfip.condicion_iva);
+          setMensajeCliente('✅ Datos autocompletados desde AFIP.');
+          setLoadingCuit(false);
+          return;
+        }
+      }
+
+      setMensajeCliente('⚠️ Padrón automático no disponible. Podés ingresar los datos manualmente.');
     } catch {
-      setMensajeCliente('⚠️ Padrón automático no disponible. Ingresá la Razón Social manualmente.');
+      setMensajeCliente('⚠️ Ingrese la Razón Social y datos manualmente.');
     } finally {
       setLoadingCuit(false);
     }
   };
 
-  // Lógica exacta de consulta al BCRA proveniente de tu HTML
+  // Consultar BCRA en tiempo real
   const consultarBcra = async (clienteId, cuitCliente) => {
     const cleanCuit = cuitCliente?.replace(/\D/g, '');
     if (!cleanCuit || cleanCuit.length !== 11) return;
@@ -132,8 +141,8 @@ export default function Home() {
       const urlCheques = `https://api.bcra.gob.ar/centraldedeudores/v1.0/Deudas/ChequesRechazados/${cleanCuit}`;
 
       const [resDeudas, resCheques] = await Promise.allSettled([
-        fetch(`https://corsproxy.io/?${encodeURIComponent(urlDeudas)}`),
-        fetch(`https://corsproxy.io/?${encodeURIComponent(urlCheques)}`)
+        fetch(urlDeudas),
+        fetch(urlCheques)
       ]);
 
       let maxSit = 1;
@@ -164,11 +173,7 @@ export default function Home() {
 
       setResultadosBcra(prev => ({
         ...prev,
-        [clienteId]: {
-          maxSit,
-          totalDeuda,
-          chequesRechazados
-        }
+        [clienteId]: { maxSit, totalDeuda, chequesRechazados }
       }));
 
     } catch {
@@ -181,6 +186,31 @@ export default function Home() {
     }
   };
 
+  // Cargar cliente en el formulario para editar
+  const prepararEdicion = (c) => {
+    setEditingId(c.id);
+    setCuit(c.cuit || '');
+    setRazonSocial(c.razon_social || '');
+    setCondicionIva(c.condicion_iva || 'Monotributo');
+    setEmail(c.email || '');
+    setTelefono(c.telefono || '');
+    setDireccion(c.direccion || '');
+    setClienteSeleccionado(null);
+    setMensajeCliente('✏️ Modo edición activado. Modificá los datos y presioná "Guardar Cambios".');
+  };
+
+  const cancelarEdicion = () => {
+    setEditingId(null);
+    setCuit('');
+    setRazonSocial('');
+    setCondicionIva('Monotributo');
+    setEmail('');
+    setTelefono('');
+    setDireccion('');
+    setMensajeCliente('');
+  };
+
+  // Guardar o Actualizar Cliente
   const guardarCliente = async (e) => {
     e.preventDefault();
     setMensajeCliente('');
@@ -191,20 +221,33 @@ export default function Home() {
       return;
     }
 
-    const { error } = await supabase.from('clientes').insert([
-      { cuit: cleanCuit, razon_social: razonSocial, condicion_iva: condicionIva, email, telefono, direccion }
-    ]);
+    const payload = { cuit: cleanCuit, razon_social: razonSocial, condicion_iva: condicionIva, email, telefono, direccion };
 
-    if (error) {
-      setMensajeCliente(`Error al guardar: ${error.message}`);
+    let resultError = null;
+
+    if (editingId) {
+      const { error } = await supabase.from('clientes').update(payload).eq('id', editingId);
+      resultError = error;
     } else {
-      setMensajeCliente('¡Cliente guardado con éxito!');
-      setCuit('');
-      setRazonSocial('');
-      setCondicionIva('Monotributo');
-      setEmail('');
-      setTelefono('');
-      setDireccion('');
+      const { error } = await supabase.from('clientes').insert([payload]);
+      resultError = error;
+    }
+
+    if (resultError) {
+      setMensajeCliente(`Error al guardar: ${resultError.message}`);
+    } else {
+      setMensajeCliente(editingId ? '¡Cliente actualizado con éxito!' : '¡Cliente guardado con éxito!');
+      cancelarEdicion();
+      cargarClientes();
+    }
+  };
+
+  // Borrar Cliente
+  const borrarCliente = async (id) => {
+    if (!confirm('¿Estás seguro de eliminar este cliente?')) return;
+    const { error } = await supabase.from('clientes').delete().eq('id', id);
+    if (!error) {
+      setClienteSeleccionado(null);
       cargarClientes();
     }
   };
@@ -296,8 +339,18 @@ export default function Home() {
           <div>
             <h2 style={{ color: '#cbd5e1', marginBottom: '1.5rem' }}>Gestión de Clientes y Cuentas Corrientes</h2>
 
+            {/* FORMULARIO */}
             <div style={{ background: '#1e293b', padding: '1.5rem', borderRadius: '8px', border: '1px solid #334155', marginBottom: '2rem' }}>
-              <h3 style={{ marginTop: 0, color: '#f59e0b', fontSize: '1.1rem' }}>Nuevo Cliente</h3>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+                <h3 style={{ margin: 0, color: '#f59e0b', fontSize: '1.1rem' }}>
+                  {editingId ? '✏️ Editar Cliente' : 'Nuevo Cliente'}
+                </h3>
+                {editingId && (
+                  <button onClick={cancelarEdicion} style={{ background: '#475569', color: '#fff', border: 'none', padding: '0.3rem 0.75rem', borderRadius: '4px', cursor: 'pointer', fontSize: '0.8rem' }}>
+                    Cancelar Edición
+                  </button>
+                )}
+              </div>
 
               {mensajeCliente && (
                 <div style={{ padding: '0.5rem 1rem', borderRadius: '6px', marginBottom: '1rem', background: mensajeCliente.includes('éxito') || mensajeCliente.includes('✅') ? '#064e3b' : '#450a0a', color: mensajeCliente.includes('éxito') || mensajeCliente.includes('✅') ? '#a7f3d0' : '#fca5a5', fontSize: '0.9rem' }}>
@@ -377,14 +430,14 @@ export default function Home() {
                 </div>
 
                 <div style={{ gridColumn: '1 / -1', textAlign: 'right' }}>
-                  <button type="submit" style={{ background: '#f59e0b', color: '#0f172a', border: 'none', padding: '0.6rem 1.5rem', borderRadius: '6px', fontWeight: 'bold', cursor: 'pointer' }}>
-                    + Guardar Cliente
+                  <button type="submit" style={{ background: editingId ? '#38bdf8' : '#f59e0b', color: '#0f172a', border: 'none', padding: '0.6rem 1.5rem', borderRadius: '6px', fontWeight: 'bold', cursor: 'pointer' }}>
+                    {editingId ? '💾 Guardar Cambios' : '+ Guardar Cliente'}
                   </button>
                 </div>
               </form>
             </div>
 
-            {/* TABLA DE CLIENTES */}
+            {/* TABLA DE CLIENTES REORGANIZADA */}
             <div style={{ background: '#1e293b', borderRadius: '8px', border: '1px solid #334155', overflow: 'hidden' }}>
               <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '0.9rem' }}>
                 <thead>
@@ -392,13 +445,14 @@ export default function Home() {
                     <th style={{ padding: '0.85rem 1rem' }}>Razón Social</th>
                     <th style={{ padding: '0.85rem 1rem' }}>CUIT</th>
                     <th style={{ padding: '0.85rem 1rem' }}>Cond. IVA</th>
-                    <th style={{ padding: '0.85rem 1rem', textAlign: 'center' }}>Evaluación BCRA</th>
+                    <th style={{ padding: '0.85rem 1rem', textAlign: 'center' }}>Situación BCRA</th>
+                    <th style={{ padding: '0.85rem 1rem', textAlign: 'center' }}>Acción</th>
                   </tr>
                 </thead>
                 <tbody>
                   {clientes.length === 0 ? (
                     <tr>
-                      <td colSpan="4" style={{ padding: '1.5rem', textAlign: 'center', color: '#64748b' }}>
+                      <td colSpan="5" style={{ padding: '1.5rem', textAlign: 'center', color: '#64748b' }}>
                         No hay clientes registrados aún.
                       </td>
                     </tr>
@@ -418,6 +472,8 @@ export default function Home() {
                           </td>
                           <td style={{ padding: '0.85rem 1rem', color: '#cbd5e1', fontFamily: 'monospace' }}>{c.cuit}</td>
                           <td style={{ padding: '0.85rem 1rem', color: '#94a3b8' }}>{c.condicion_iva || '-'}</td>
+                          
+                          {/* COLUMNA SITUACIÓN BCRA UBICADA AQUÍ */}
                           <td style={{ padding: '0.85rem 1rem', textAlign: 'center' }} onClick={(e) => e.stopPropagation()}>
                             {res ? (
                               <div style={{ display: 'inline-flex', flexDirection: 'column', alignItems: 'center', gap: '0.25rem' }}>
@@ -434,19 +490,32 @@ export default function Home() {
                                 </span>
                                 {res.chequesRechazados > 0 && (
                                   <span style={{ fontSize: '0.75rem', color: '#ef4444', fontWeight: 'bold' }}>
-                                    ⚠️ {res.chequesRechazados} cheque(s) rech.
+                                    ⚠️ {res.chequesRechazados} cheque(s)
                                   </span>
                                 )}
                               </div>
                             ) : (
+                              <span style={{ fontSize: '0.8rem', color: '#64748b', italic: 'true' }}>Sin consultar</span>
+                            )}
+                          </td>
+
+                          {/* BOTÓN DE ACCIÓN / CONSULTA */}
+                          <td style={{ padding: '0.85rem 1rem', textAlign: 'center' }} onClick={(e) => e.stopPropagation()}>
+                            <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'center' }}>
                               <button 
                                 onClick={() => consultarBcra(c.id, c.cuit)}
                                 disabled={loadingBcraId === c.id}
-                                style={{ background: '#1e40af', color: '#93c5fd', border: 'none', padding: '0.35rem 0.8rem', borderRadius: '6px', fontSize: '0.75rem', fontWeight: 'bold', cursor: 'pointer' }}
+                                style={{ background: '#1e40af', color: '#93c5fd', border: 'none', padding: '0.35rem 0.7rem', borderRadius: '6px', fontSize: '0.75rem', fontWeight: 'bold', cursor: 'pointer' }}
                               >
-                                {loadingBcraId === c.id ? 'Consultando...' : 'Consultar BCRA'}
+                                {loadingBcraId === c.id ? '...' : 'Consultar BCRA'}
                               </button>
-                            )}
+                              <button 
+                                onClick={() => prepararEdicion(c)}
+                                style={{ background: '#334155', color: '#f59e0b', border: 'none', padding: '0.35rem 0.6rem', borderRadius: '6px', fontSize: '0.75rem', fontWeight: 'bold', cursor: 'pointer' }}
+                              >
+                                ✏️
+                              </button>
+                            </div>
                           </td>
                         </tr>
                       );
@@ -456,7 +525,7 @@ export default function Home() {
               </table>
             </div>
 
-            {/* MODAL FICHA COMPLETA */}
+            {/* MODAL FICHA CON EDICIÓN Y ELIMINACIÓN */}
             {clienteSeleccionado && (
               <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.7)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 1000 }} onClick={() => setClienteSeleccionado(null)}>
                 <div style={{ background: '#1e293b', border: '1px solid #475569', borderRadius: '12px', padding: '2rem', maxWidth: '500px', width: '90%', color: '#fff', boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.5)' }} onClick={(e) => e.stopPropagation()}>
@@ -471,7 +540,22 @@ export default function Home() {
                     <p style={{ margin: 0 }}><strong style={{ color: '#94a3b8' }}>Dirección / Localidad:</strong> {clienteSeleccionado.direccion || 'Sin registrar'}</p>
                   </div>
 
-                  <div style={{ marginTop: '1.5rem', textAlign: 'right' }}>
+                  <div style={{ marginTop: '1.5rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <div style={{ display: 'flex', gap: '0.5rem' }}>
+                      <button 
+                        onClick={() => prepararEdicion(clienteSeleccionado)}
+                        style={{ background: '#2563eb', color: '#fff', border: 'none', padding: '0.5rem 1rem', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold', fontSize: '0.85rem' }}
+                      >
+                        ✏️ Editar
+                      </button>
+                      <button 
+                        onClick={() => borrarCliente(clienteSeleccionado.id)}
+                        style={{ background: '#7f1d1d', color: '#fca5a5', border: 'none', padding: '0.5rem 1rem', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold', fontSize: '0.85rem' }}
+                      >
+                        🗑️ Borrar
+                      </button>
+                    </div>
+                    
                     <button 
                       onClick={() => setClienteSeleccionado(null)}
                       style={{ background: '#475569', color: '#fff', border: 'none', padding: '0.5rem 1.25rem', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold' }}
