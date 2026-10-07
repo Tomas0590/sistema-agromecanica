@@ -26,7 +26,7 @@ export default function Home() {
 
   // Estado Clientes y Formulario
   const [clientes, setClientes] = useState([]);
-  const [editingId, setEditingId] = useState(null); // ID si se está editando
+  const [editingId, setEditingId] = useState(null);
   const [cuit, setCuit] = useState('');
   const [razonSocial, setRazonSocial] = useState('');
   const [condicionIva, setCondicionIva] = useState('Monotributo');
@@ -84,7 +84,7 @@ export default function Home() {
     await supabase.auth.signOut();
   };
 
-  // Búsqueda de CUIT conectada a nuestro endpoint de servidor interno
+  // Buscar CUIT usando nuestra API Route de Servidor
   const buscarCuit = async () => {
     const cleanCuit = cuit.replace(/\D/g, '');
     if (cleanCuit.length !== 11) {
@@ -108,27 +108,6 @@ export default function Home() {
       }
     } catch {
       setMensajeCliente('⚠️ Ocurrió un error al consultar el CUIT. Completá los datos manualmente.');
-    } finally {
-      setLoadingCuit(false);
-    }
-  };
-      // 2. Probar API AFIP pública directa
-      const resAfip = await fetch(`https://afip.republica.dev/cuit/${cleanCuit}`);
-      if (resAfip.ok) {
-        const dataAfip = await resAfip.json();
-        if (dataAfip.razon_social || dataAfip.nombre) {
-          setRazonSocial(dataAfip.razon_social || dataAfip.nombre);
-          if (dataAfip.domicilio) setDireccion(dataAfip.domicilio);
-          if (dataAfip.condicion_iva) setCondicionIva(dataAfip.condicion_iva);
-          setMensajeCliente('✅ Datos autocompletados desde AFIP.');
-          setLoadingCuit(false);
-          return;
-        }
-      }
-
-      setMensajeCliente('⚠️ Padrón automático no disponible. Podés ingresar los datos manualmente.');
-    } catch {
-      setMensajeCliente('⚠️ Ingrese la Razón Social y datos manualmente.');
     } finally {
       setLoadingCuit(false);
     }
@@ -191,7 +170,6 @@ export default function Home() {
     }
   };
 
-  // Cargar cliente en el formulario para editar
   const prepararEdicion = (c) => {
     setEditingId(c.id);
     setCuit(c.cuit || '');
@@ -215,7 +193,6 @@ export default function Home() {
     setMensajeCliente('');
   };
 
-  // Guardar o Actualizar Cliente
   const guardarCliente = async (e) => {
     e.preventDefault();
     setMensajeCliente('');
@@ -227,7 +204,6 @@ export default function Home() {
     }
 
     const payload = { cuit: cleanCuit, razon_social: razonSocial, condicion_iva: condicionIva, email, telefono, direccion };
-
     let resultError = null;
 
     if (editingId) {
@@ -247,7 +223,6 @@ export default function Home() {
     }
   };
 
-  // Borrar Cliente
   const borrarCliente = async (id) => {
     if (!confirm('¿Estás seguro de eliminar este cliente?')) return;
     const { error } = await supabase.from('clientes').delete().eq('id', id);
@@ -344,7 +319,6 @@ export default function Home() {
           <div>
             <h2 style={{ color: '#cbd5e1', marginBottom: '1.5rem' }}>Gestión de Clientes y Cuentas Corrientes</h2>
 
-            {/* FORMULARIO */}
             <div style={{ background: '#1e293b', padding: '1.5rem', borderRadius: '8px', border: '1px solid #334155', marginBottom: '2rem' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
                 <h3 style={{ margin: 0, color: '#f59e0b', fontSize: '1.1rem' }}>
@@ -442,7 +416,7 @@ export default function Home() {
               </form>
             </div>
 
-            {/* TABLA DE CLIENTES REORGANIZADA */}
+            {/* TABLA DE CLIENTES */}
             <div style={{ background: '#1e293b', borderRadius: '8px', border: '1px solid #334155', overflow: 'hidden' }}>
               <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '0.9rem' }}>
                 <thead>
@@ -478,7 +452,6 @@ export default function Home() {
                           <td style={{ padding: '0.85rem 1rem', color: '#cbd5e1', fontFamily: 'monospace' }}>{c.cuit}</td>
                           <td style={{ padding: '0.85rem 1rem', color: '#94a3b8' }}>{c.condicion_iva || '-'}</td>
                           
-                          {/* COLUMNA SITUACIÓN BCRA UBICADA AQUÍ */}
                           <td style={{ padding: '0.85rem 1rem', textAlign: 'center' }} onClick={(e) => e.stopPropagation()}>
                             {res ? (
                               <div style={{ display: 'inline-flex', flexDirection: 'column', alignItems: 'center', gap: '0.25rem' }}>
@@ -500,11 +473,10 @@ export default function Home() {
                                 )}
                               </div>
                             ) : (
-                              <span style={{ fontSize: '0.8rem', color: '#64748b', italic: 'true' }}>Sin consultar</span>
+                              <span style={{ fontSize: '0.8rem', color: '#64748b' }}>Sin consultar</span>
                             )}
                           </td>
 
-                          {/* BOTÓN DE ACCIÓN / CONSULTA */}
                           <td style={{ padding: '0.85rem 1rem', textAlign: 'center' }} onClick={(e) => e.stopPropagation()}>
                             <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'center' }}>
                               <button 
@@ -530,7 +502,7 @@ export default function Home() {
               </table>
             </div>
 
-            {/* MODAL FICHA CON EDICIÓN Y ELIMINACIÓN */}
+            {/* MODAL FICHA */}
             {clienteSeleccionado && (
               <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.7)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 1000 }} onClick={() => setClienteSeleccionado(null)}>
                 <div style={{ background: '#1e293b', border: '1px solid #475569', borderRadius: '12px', padding: '2rem', maxWidth: '500px', width: '90%', color: '#fff', boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.5)' }} onClick={(e) => e.stopPropagation()}>
