@@ -28,9 +28,12 @@ export default function Home() {
   const [loadingCuit, setLoadingCuit] = useState(false);
   const [mensajeCliente, setMensajeCliente] = useState('');
 
-  // Estado para la consulta de situación BCRA en vivo
+  // Estados para Situaciones BCRA en Vivo
   const [situacionesBcra, setSituacionesBcra] = useState({});
   const [loadingBcraId, setLoadingBcraId] = useState(null);
+
+  // Cliente Seleccionado para Modal
+  const [clienteSeleccionado, setClienteSeleccionado] = useState(null);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -73,7 +76,7 @@ export default function Home() {
     await supabase.auth.signOut();
   };
 
-  // Buscar datos de CUIT en Padrón (Razón Social + IVA + Dirección)
+  // Autocompletar CUIT desde Padrón
   const buscarCuit = async () => {
     const cleanCuit = cuit.replace(/\D/g, '');
     if (cleanCuit.length !== 11) {
@@ -84,8 +87,9 @@ export default function Home() {
     setMensajeCliente('');
 
     try {
-      // API pública de padrón con IVA y Razón Social
-      const res = await fetch(`https://api.v2.padron.ar/cuit/${cleanCuit}`);
+      const targetUrl = `https://api.v2.padron.ar/cuit/${cleanCuit}`;
+      const res = await fetch(`https://corsproxy.io/?${encodeURIComponent(targetUrl)}`);
+      
       if (res.ok) {
         const data = await res.json();
         if (data.denominacion || data.nombre) {
@@ -94,68 +98,55 @@ export default function Home() {
           if (data.condicion_iva || data.iva) {
             setCondicionIva(data.condicion_iva || data.iva);
           }
-          setMensajeCliente('✅ Datos encontrados y autocompletados.');
+          setMensajeCliente('✅ Datos autocompletados correctamente.');
           setLoadingCuit(false);
           return;
         }
       }
-
-      // Respaldo BCRA si el padrón no responde la denominación
-      const resBcra = await fetch(`https://api.bcra.gob.ar/centraldedeudores/v1.0/Deudas/${cleanCuit}`);
-      if (resBcra.ok) {
-        const dataBcra = await resBcra.json();
-        if (dataBcra?.results?.denominacion) {
-          setRazonSocial(dataBcra.results.denominacion);
-          setMensajeCliente('✅ Razón social autocompletada desde el BCRA.');
-          setLoadingCuit(false);
-          return;
-        }
-      }
-
-      setMensajeCliente('⚠️ No se autocompletó automáticamente. Podés ingresar los datos manualmente.');
+      setMensajeCliente('⚠️ Padrón automático no disponible. Podes ingresar la Razón Social manualmente.');
     } catch {
-      setMensajeCliente('⚠️ Error al consultar las APIs externas. Completá los datos manualmente.');
+      setMensajeCliente('⚠️ Padrón automático no disponible. Ingresá la Razón Social manualmente.');
     } finally {
       setLoadingCuit(false);
     }
   };
 
-  // Consultar Situación BCRA directa y mostrarla en la tabla
+  // Consultar BCRA e Inyectar la Situación con Color
   const consultarSituacionBcra = async (clienteId, cuitCliente) => {
     const cleanCuit = cuitCliente?.replace(/\D/g, '');
     if (!cleanCuit || cleanCuit.length !== 11) return;
 
     setLoadingBcraId(clienteId);
     try {
-      const res = await fetch(`https://api.bcra.gob.ar/centraldedeudores/v1.0/Deudas/${cleanCuit}`);
+      const targetUrl = `https://api.bcra.gob.ar/centraldedeudores/v1.0/Deudas/${cleanCuit}`;
+      const res = await fetch(`https://corsproxy.io/?${encodeURIComponent(targetUrl)}`);
+      
       if (res.ok) {
         const data = await res.json();
         const deudas = data?.results?.periodos?.[0]?.detalles || [];
         
         if (deudas.length > 0) {
-          // Tomamos la peor situación registrada
-          const peorSituacion = Math.max(...deudas.map(d => d.situacion || 1));
-          const entidad = deudas[0].entidad || 'Entidad Fina.';
+          const peorSit = Math.max(...deudas.map(d => d.situacion || 1));
           setSituacionesBcra(prev => ({
             ...prev,
-            [clienteId]: `Sit ${peorSituacion} (${entidad})`
+            [clienteId]: { sit: peorSit, label: `Situación ${peorSit}` }
           }));
         } else {
           setSituacionesBcra(prev => ({
             ...prev,
-            [clienteId]: 'Sit 1 (Normal / Sin Deudas)'
+            [clienteId]: { sit: 1, label: 'Situación 1 (Normal)' }
           }));
         }
       } else {
         setSituacionesBcra(prev => ({
           ...prev,
-          [clienteId]: 'Sin registros'
+          [clienteId]: { sit: 1, label: 'Situación 1 (Sin Deudas)' }
         }));
       }
     } catch {
       setSituacionesBcra(prev => ({
         ...prev,
-        [clienteId]: 'Error de consulta'
+        [clienteId]: { sit: 0, label: 'Error al consultar' }
       }));
     } finally {
       setLoadingBcraId(null);
@@ -348,7 +339,7 @@ export default function Home() {
                 </div>
 
                 <div>
-                  <label style={{ display: 'block', fontSize: '0.8rem', color: '#94a3b8', marginBottom: '0.25rem' }}>Dirección</label>
+                  <label style={{ display: 'block', fontSize: '0.8rem', color: '#94a3b8', marginBottom: '0.25rem' }}>Dirección / Localidad</label>
                   <input 
                     type="text" 
                     value={direccion} 
@@ -365,61 +356,96 @@ export default function Home() {
               </form>
             </div>
 
+            {/* TABLA PRINCIPAL DE CLIENTES */}
             <div style={{ background: '#1e293b', borderRadius: '8px', border: '1px solid #334155', overflow: 'hidden' }}>
               <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '0.9rem' }}>
                 <thead>
                   <tr style={{ background: '#0f172a', color: '#f59e0b', borderBottom: '1px solid #334155' }}>
-                    <th style={{ padding: '0.75rem 1rem' }}>Razón Social</th>
-                    <th style={{ padding: '0.75rem 1rem' }}>CUIT</th>
-                    <th style={{ padding: '0.75rem 1rem' }}>Cond. IVA</th>
-                    <th style={{ padding: '0.75rem 1rem' }}>Teléfono</th>
-                    <th style={{ padding: '0.75rem 1rem' }}>Dirección</th>
-                    <th style={{ padding: '0.75rem 1rem' }}>Situación BCRA</th>
+                    <th style={{ padding: '0.85rem 1rem' }}>Razón Social</th>
+                    <th style={{ padding: '0.85rem 1rem' }}>CUIT</th>
+                    <th style={{ padding: '0.85rem 1rem' }}>Cond. IVA</th>
+                    <th style={{ padding: '0.85rem 1rem', textAlign: 'center' }}>Situación BCRA</th>
                   </tr>
                 </thead>
                 <tbody>
                   {clientes.length === 0 ? (
                     <tr>
-                      <td colSpan="6" style={{ padding: '1.5rem', textAlign: 'center', color: '#64748b' }}>
+                      <td colSpan="4" style={{ padding: '1.5rem', textAlign: 'center', color: '#64748b' }}>
                         No hay clientes registrados aún.
                       </td>
                     </tr>
                   ) : (
-                    clientes.map((c) => (
-                      <tr key={c.id} style={{ borderBottom: '1px solid #334155' }}>
-                        <td style={{ padding: '0.75rem 1rem', fontWeight: 'bold' }}>{c.razon_social}</td>
-                        <td style={{ padding: '0.75rem 1rem', color: '#94a3b8' }}>{c.cuit}</td>
-                        <td style={{ padding: '0.75rem 1rem', color: '#94a3b8' }}>{c.condicion_iva || '-'}</td>
-                        <td style={{ padding: '0.75rem 1rem', color: '#94a3b8' }}>{c.telefono || '-'}</td>
-                        <td style={{ padding: '0.75rem 1rem', color: '#94a3b8' }}>{c.direccion || '-'}</td>
-                        <td style={{ padding: '0.75rem 1rem' }}>
-                          {situacionesBcra[c.id] ? (
-                            <span style={{ 
-                              padding: '0.25rem 0.5rem', 
-                              borderRadius: '4px', 
-                              fontSize: '0.8rem', 
-                              fontWeight: 'bold',
-                              background: situacionesBcra[c.id].includes('Sit 1') ? '#064e3b' : '#450a0a',
-                              color: situacionesBcra[c.id].includes('Sit 1') ? '#a7f3d0' : '#fca5a5'
-                            }}>
-                              {situacionesBcra[c.id]}
-                            </span>
-                          ) : (
-                            <button 
-                              onClick={() => consultarSituacionBcra(c.id, c.cuit)}
-                              disabled={loadingBcraId === c.id}
-                              style={{ background: '#1e40af', color: '#93c5fd', border: 'none', padding: '0.3rem 0.6rem', borderRadius: '4px', fontSize: '0.75rem', fontWeight: 'bold', cursor: 'pointer' }}
-                            >
-                              {loadingBcraId === c.id ? 'Consultando...' : 'Ver Situación 🔗'}
-                            </button>
-                          )}
-                        </td>
-                      </tr>
-                    ))
+                    clientes.map((c) => {
+                      const infoBcra = situacionesBcra[c.id];
+                      return (
+                        <tr 
+                          key={c.id} 
+                          style={{ borderBottom: '1px solid #334155', cursor: 'pointer', transition: 'background 0.2s' }}
+                          onClick={() => setClienteSeleccionado(c)}
+                        >
+                          <td style={{ padding: '0.85rem 1rem', fontWeight: 'bold', color: '#38bdf8' }}>
+                            👤 {c.razon_social}
+                          </td>
+                          <td style={{ padding: '0.85rem 1rem', color: '#cbd5e1' }}>{c.cuit}</td>
+                          <td style={{ padding: '0.85rem 1rem', color: '#94a3b8' }}>{c.condicion_iva || '-'}</td>
+                          <td style={{ padding: '0.85rem 1rem', textAlign: 'center' }} onClick={(e) => e.stopPropagation()}>
+                            {infoBcra ? (
+                              <span style={{ 
+                                padding: '0.35rem 0.75rem', 
+                                borderRadius: '20px', 
+                                fontSize: '0.8rem', 
+                                fontWeight: 'bold',
+                                display: 'inline-block',
+                                background: infoBcra.sit === 1 ? '#064e3b' : infoBcra.sit === 2 ? '#854d0e' : '#7f1d1d',
+                                color: infoBcra.sit === 1 ? '#a7f3d0' : infoBcra.sit === 2 ? '#fef08a' : '#fca5a5',
+                                border: `1px solid ${infoBcra.sit === 1 ? '#059669' : infoBcra.sit === 2 ? '#ca8a04' : '#dc2626'}`
+                              }}>
+                                {infoBcra.label}
+                              </span>
+                            ) : (
+                              <button 
+                                onClick={() => consultarSituacionBcra(c.id, c.cuit)}
+                                disabled={loadingBcraId === c.id}
+                                style={{ background: '#1e40af', color: '#93c5fd', border: 'none', padding: '0.35rem 0.75rem', borderRadius: '6px', fontSize: '0.75rem', fontWeight: 'bold', cursor: 'pointer' }}
+                              >
+                                {loadingBcraId === c.id ? 'Consultando...' : 'Obtener Situación'}
+                              </button>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })
                   )}
                 </tbody>
               </table>
             </div>
+
+            {/* MODAL FICHA DE CLIENTE */}
+            {clienteSeleccionado && (
+              <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.7)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 1000 }} onClick={() => setClienteSeleccionado(null)}>
+                <div style={{ background: '#1e293b', border: '1px solid #475569', borderRadius: '12px', padding: '2rem', maxWidth: '500px', width: '90%', color: '#fff', boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.5)' }} onClick={(e) => e.stopPropagation()}>
+                  <h3 style={{ margin: '0 0 1rem 0', color: '#f59e0b', fontSize: '1.25rem' }}>{clienteSeleccionado.razon_social}</h3>
+                  <hr style={{ borderColor: '#334155', marginBottom: '1rem' }} />
+                  
+                  <div style={{ display: 'grid', gap: '0.75rem', fontSize: '0.95rem' }}>
+                    <p style={{ margin: 0 }}><strong style={{ color: '#94a3b8' }}>CUIT:</strong> {clienteSeleccionado.cuit}</p>
+                    <p style={{ margin: 0 }}><strong style={{ color: '#94a3b8' }}>Condición IVA:</strong> {clienteSeleccionado.condicion_iva || '-'}</p>
+                    <p style={{ margin: 0 }}><strong style={{ color: '#94a3b8' }}>Teléfono:</strong> {clienteSeleccionado.telefono || 'Sin registrar'}</p>
+                    <p style={{ margin: 0 }}><strong style={{ color: '#94a3b8' }}>Email:</strong> {clienteSeleccionado.email || 'Sin registrar'}</p>
+                    <p style={{ margin: 0 }}><strong style={{ color: '#94a3b8' }}>Dirección / Localidad:</strong> {clienteSeleccionado.direccion || 'Sin registrar'}</p>
+                  </div>
+
+                  <div style={{ marginTop: '1.5rem', textAlign: 'right' }}>
+                    <button 
+                      onClick={() => setClienteSeleccionado(null)}
+                      style={{ background: '#475569', color: '#fff', border: 'none', padding: '0.5rem 1.25rem', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold' }}
+                    >
+                      Cerrar
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
 
           </div>
         )}
