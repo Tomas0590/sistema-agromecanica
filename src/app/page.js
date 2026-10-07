@@ -8,13 +8,16 @@ const SUPABASE_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'sb_publishabl
 const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 
 export default function Home() {
+  // Autenticación
   const [session, setSession] = useState(null);
   const [usernameAuth, setUsernameAuth] = useState('');
   const [passwordAuth, setPasswordAuth] = useState('');
   const [errorAuth, setErrorAuth] = useState('');
 
+  // Navegación
   const [activeTab, setActiveTab] = useState('clientes');
 
+  // Clientes
   const [clientes, setClientes] = useState([]);
   const [cuit, setCuit] = useState('');
   const [razonSocial, setRazonSocial] = useState('');
@@ -24,6 +27,10 @@ export default function Home() {
   const [direccion, setDireccion] = useState('');
   const [loadingCuit, setLoadingCuit] = useState(false);
   const [mensajeCliente, setMensajeCliente] = useState('');
+
+  // Estado para la consulta de situación BCRA en vivo
+  const [situacionesBcra, setSituacionesBcra] = useState({});
+  const [loadingBcraId, setLoadingBcraId] = useState(null);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -66,69 +73,107 @@ export default function Home() {
     await supabase.auth.signOut();
   };
 
-  // Buscar CUIT con doble servidor (BCRA Oficial + Padrón de Respaldo)
+  // Buscar datos de CUIT en Padrón (Razón Social + IVA + Dirección)
   const buscarCuit = async () => {
     const cleanCuit = cuit.replace(/\D/g, '');
     if (cleanCuit.length !== 11) {
-      setMensajeCliente('El CUIT debe contener exactamente 11 dígitos.');
+      setMensajeCliente('El CUIT debe tener 11 dígitos.');
       return;
     }
-
     setLoadingCuit(true);
     setMensajeCliente('');
 
     try {
-      // Intentamos primero con la API de la Central de Deudores del BCRA (Servidor Oficial)
+      // API pública de padrón con IVA y Razón Social
+      const res = await fetch(`https://api.v2.padron.ar/cuit/${cleanCuit}`);
+      if (res.ok) {
+        const data = await res.json();
+        if (data.denominacion || data.nombre) {
+          setRazonSocial(data.denominacion || data.nombre);
+          if (data.direccion) setDireccion(data.direccion);
+          if (data.condicion_iva || data.iva) {
+            setCondicionIva(data.condicion_iva || data.iva);
+          }
+          setMensajeCliente('✅ Datos encontrados y autocompletados.');
+          setLoadingCuit(false);
+          return;
+        }
+      }
+
+      // Respaldo BCRA si el padrón no responde la denominación
       const resBcra = await fetch(`https://api.bcra.gob.ar/centraldedeudores/v1.0/Deudas/${cleanCuit}`);
-      
       if (resBcra.ok) {
         const dataBcra = await resBcra.json();
         if (dataBcra?.results?.denominacion) {
           setRazonSocial(dataBcra.results.denominacion);
-          setMensajeCliente('✅ Razón Social autocompletada desde el BCRA.');
+          setMensajeCliente('✅ Razón social autocompletada desde el BCRA.');
           setLoadingCuit(false);
           return;
         }
       }
-    } catch (e) {
-      console.warn('Servidor BCRA no disponible, intentando con padrón secundario...', e);
-    }
 
+      setMensajeCliente('⚠️ No se autocompletó automáticamente. Podés ingresar los datos manualmente.');
+    } catch {
+      setMensajeCliente('⚠️ Error al consultar las APIs externas. Completá los datos manualmente.');
+    } finally {
+      setLoadingCuit(false);
+    }
+  };
+
+  // Consultar Situación BCRA directa y mostrarla en la tabla
+  const consultarSituacionBcra = async (clienteId, cuitCliente) => {
+    const cleanCuit = cuitCliente?.replace(/\D/g, '');
+    if (!cleanCuit || cleanCuit.length !== 11) return;
+
+    setLoadingBcraId(clienteId);
     try {
-      // Servidor de respaldo alternativo si el BCRA no devuelve nombre
-      const resPadron = await fetch(`https://api.v2.padron.ar/cuit/${cleanCuit}`);
-      if (resPadron.ok) {
-        const dataPadron = await resPadron.json();
-        if (dataPadron.denominacion || dataPadron.nombre) {
-          setRazonSocial(dataPadron.denominacion || dataPadron.nombre);
-          if (dataPadron.direccion) setDireccion(dataPadron.direccion);
-          if (dataPadron.condicion_iva || dataPadron.iva) {
-            setCondicionIva(dataPadron.condicion_iva || dataPadron.iva);
-          }
-          setMensajeCliente('✅ Datos autocompletados desde el Padrón.');
-          setLoadingCuit(false);
-          return;
+      const res = await fetch(`https://api.bcra.gob.ar/centraldedeudores/v1.0/Deudas/${cleanCuit}`);
+      if (res.ok) {
+        const data = await res.json();
+        const deudas = data?.results?.periodos?.[0]?.detalles || [];
+        
+        if (deudas.length > 0) {
+          // Tomamos la peor situación registrada
+          const peorSituacion = Math.max(...deudas.map(d => d.situacion || 1));
+          const entidad = deudas[0].entidad || 'Entidad Fina.';
+          setSituacionesBcra(prev => ({
+            ...prev,
+            [clienteId]: `Sit ${peorSituacion} (${entidad})`
+          }));
+        } else {
+          setSituacionesBcra(prev => ({
+            ...prev,
+            [clienteId]: 'Sit 1 (Normal / Sin Deudas)'
+          }));
         }
+      } else {
+        setSituacionesBcra(prev => ({
+          ...prev,
+          [clienteId]: 'Sin registros'
+        }));
       }
-    } catch (e) {
-      console.warn('Error en padrón secundario', e);
+    } catch {
+      setSituacionesBcra(prev => ({
+        ...prev,
+        [clienteId]: 'Error de consulta'
+      }));
+    } finally {
+      setLoadingBcraId(null);
     }
-
-    // Si ambos servicios públicos externos están caídos o no responden:
-    setMensajeCliente('⚠️ No se encontraron datos automáticos para este CUIT. Podes ingresar la Razón Social manualmente.');
-    setLoadingCuit(false);
   };
 
   const guardarCliente = async (e) => {
     e.preventDefault();
     setMensajeCliente('');
-    if (!razonSocial || !cuit) {
+    const cleanCuit = cuit.replace(/\D/g, '');
+
+    if (!razonSocial || !cleanCuit) {
       setMensajeCliente('CUIT y Razón Social son obligatorios.');
       return;
     }
 
     const { error } = await supabase.from('clientes').insert([
-      { cuit, razon_social: razonSocial, condicion_iva: condicionIva, email, telefono, direccion }
+      { cuit: cleanCuit, razon_social: razonSocial, condicion_iva: condicionIva, email, telefono, direccion }
     ]);
 
     if (error) {
@@ -247,7 +292,7 @@ export default function Home() {
                   <div style={{ display: 'flex', gap: '0.5rem' }}>
                     <input 
                       type="text" 
-                      placeholder="20123456789" 
+                      placeholder="30708679263" 
                       value={cuit} 
                       onChange={(e) => setCuit(e.target.value)} 
                       style={{ width: '100%', padding: '0.5rem', borderRadius: '4px', border: '1px solid #475569', background: '#0f172a', color: '#fff' }}
@@ -329,7 +374,7 @@ export default function Home() {
                     <th style={{ padding: '0.75rem 1rem' }}>Cond. IVA</th>
                     <th style={{ padding: '0.75rem 1rem' }}>Teléfono</th>
                     <th style={{ padding: '0.75rem 1rem' }}>Dirección</th>
-                    <th style={{ padding: '0.75rem 1rem' }}>BCRA</th>
+                    <th style={{ padding: '0.75rem 1rem' }}>Situación BCRA</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -348,14 +393,26 @@ export default function Home() {
                         <td style={{ padding: '0.75rem 1rem', color: '#94a3b8' }}>{c.telefono || '-'}</td>
                         <td style={{ padding: '0.75rem 1rem', color: '#94a3b8' }}>{c.direccion || '-'}</td>
                         <td style={{ padding: '0.75rem 1rem' }}>
-                          <a 
-                            href={`https://www.bcra.gob.ar/BCRAyVos/Situacion_Crediticia.asp?error=0&CUIT=${c.cuit?.replace(/\D/g, '')}`} 
-                            target="_blank" 
-                            rel="noopener noreferrer"
-                            style={{ background: '#1e40af', color: '#93c5fd', padding: '0.25rem 0.6rem', borderRadius: '4px', textDecoration: 'none', fontSize: '0.75rem', fontWeight: 'bold', display: 'inline-block' }}
-                          >
-                            Ver Situación 🔗
-                          </a>
+                          {situacionesBcra[c.id] ? (
+                            <span style={{ 
+                              padding: '0.25rem 0.5rem', 
+                              borderRadius: '4px', 
+                              fontSize: '0.8rem', 
+                              fontWeight: 'bold',
+                              background: situacionesBcra[c.id].includes('Sit 1') ? '#064e3b' : '#450a0a',
+                              color: situacionesBcra[c.id].includes('Sit 1') ? '#a7f3d0' : '#fca5a5'
+                            }}>
+                              {situacionesBcra[c.id]}
+                            </span>
+                          ) : (
+                            <button 
+                              onClick={() => consultarSituacionBcra(c.id, c.cuit)}
+                              disabled={loadingBcraId === c.id}
+                              style={{ background: '#1e40af', color: '#93c5fd', border: 'none', padding: '0.3rem 0.6rem', borderRadius: '4px', fontSize: '0.75rem', fontWeight: 'bold', cursor: 'pointer' }}
+                            >
+                              {loadingBcraId === c.id ? 'Consultando...' : 'Ver Situación 🔗'}
+                            </button>
+                          )}
                         </td>
                       </tr>
                     ))
