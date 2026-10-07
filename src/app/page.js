@@ -66,34 +66,57 @@ export default function Home() {
     await supabase.auth.signOut();
   };
 
-  // Buscar CUIT con Razón Social + Condición IVA
+  // Buscar CUIT con doble servidor (BCRA Oficial + Padrón de Respaldo)
   const buscarCuit = async () => {
     const cleanCuit = cuit.replace(/\D/g, '');
     if (cleanCuit.length !== 11) {
-      setMensajeCliente('El CUIT debe tener 11 dígitos.');
+      setMensajeCliente('El CUIT debe contener exactamente 11 dígitos.');
       return;
     }
+
     setLoadingCuit(true);
     setMensajeCliente('');
 
     try {
-      const res = await fetch(`https://api.v2.padron.ar/cuit/${cleanCuit}`);
-      if (res.ok) {
-        const data = await res.json();
-        setRazonSocial(data.denominacion || data.nombre || '');
-        if (data.direccion) setDireccion(data.direccion);
-        if (data.condicion_iva || data.iva) {
-          setCondicionIva(data.condicion_iva || data.iva);
+      // Intentamos primero con la API de la Central de Deudores del BCRA (Servidor Oficial)
+      const resBcra = await fetch(`https://api.bcra.gob.ar/centraldedeudores/v1.0/Deudas/${cleanCuit}`);
+      
+      if (resBcra.ok) {
+        const dataBcra = await resBcra.json();
+        if (dataBcra?.results?.denominacion) {
+          setRazonSocial(dataBcra.results.denominacion);
+          setMensajeCliente('✅ Razón Social autocompletada desde el BCRA.');
+          setLoadingCuit(false);
+          return;
         }
-        setMensajeCliente('✅ Datos autocompletados correctamente.');
-      } else {
-        setMensajeCliente('No se encontraron datos automáticos. Podés completarlos manualmente.');
       }
-    } catch {
-      setMensajeCliente('Error al consultar el padrón. Completá los datos manualmente.');
-    } finally {
-      setLoadingCuit(false);
+    } catch (e) {
+      console.warn('Servidor BCRA no disponible, intentando con padrón secundario...', e);
     }
+
+    try {
+      // Servidor de respaldo alternativo si el BCRA no devuelve nombre
+      const resPadron = await fetch(`https://api.v2.padron.ar/cuit/${cleanCuit}`);
+      if (resPadron.ok) {
+        const dataPadron = await resPadron.json();
+        if (dataPadron.denominacion || dataPadron.nombre) {
+          setRazonSocial(dataPadron.denominacion || dataPadron.nombre);
+          if (dataPadron.direccion) setDireccion(dataPadron.direccion);
+          if (dataPadron.condicion_iva || dataPadron.iva) {
+            setCondicionIva(dataPadron.condicion_iva || dataPadron.iva);
+          }
+          setMensajeCliente('✅ Datos autocompletados desde el Padrón.');
+          setLoadingCuit(false);
+          return;
+        }
+      }
+    } catch (e) {
+      console.warn('Error en padrón secundario', e);
+    }
+
+    // Si ambos servicios públicos externos están caídos o no responden:
+    setMensajeCliente('⚠️ No se encontraron datos automáticos para este CUIT. Podes ingresar la Razón Social manualmente.');
+    setLoadingCuit(false);
   };
 
   const guardarCliente = async (e) => {
