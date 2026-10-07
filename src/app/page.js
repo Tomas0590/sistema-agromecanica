@@ -3,32 +3,28 @@
 import { useState, useEffect } from 'react';
 import { createClient } from '@supabase/supabase-js';
 
-// Inicialización limpia de Supabase
 const SUPABASE_URL = 'https://tqfpcogdvhtvvhdqewdg.supabase.co';
 const SUPABASE_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'sb_publishable_MchMROFkf12BgkCahzrC5w_qAlaGXKr';
 const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 
 export default function Home() {
-  // Estado de Autenticación
   const [session, setSession] = useState(null);
   const [usernameAuth, setUsernameAuth] = useState('');
   const [passwordAuth, setPasswordAuth] = useState('');
   const [errorAuth, setErrorAuth] = useState('');
 
-  // Navegación principal (Pestañas)
-  const [activeTab, setActiveTab] = useState('pedidos'); // 'pedidos' o 'clientes'
+  const [activeTab, setActiveTab] = useState('clientes');
 
-  // Estados del Módulo de Clientes
   const [clientes, setClientes] = useState([]);
   const [cuit, setCuit] = useState('');
   const [razonSocial, setRazonSocial] = useState('');
+  const [condicionIva, setCondicionIva] = useState('Monotributo');
   const [email, setEmail] = useState('');
   const [telefono, setTelefono] = useState('');
   const [direccion, setDireccion] = useState('');
   const [loadingCuit, setLoadingCuit] = useState(false);
   const [mensajeCliente, setMensajeCliente] = useState('');
 
-  // Comprobar sesión al cargar
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session);
@@ -41,7 +37,6 @@ export default function Home() {
     return () => subscription.unsubscribe();
   }, []);
 
-  // Cargar clientes al estar autenticado
   useEffect(() => {
     if (session) {
       cargarClientes();
@@ -53,7 +48,6 @@ export default function Home() {
     if (!error && data) setClientes(data);
   };
 
-  // Login con Usuario + Contraseña
   const handleLogin = async (e) => {
     e.preventDefault();
     setErrorAuth('');
@@ -72,7 +66,7 @@ export default function Home() {
     await supabase.auth.signOut();
   };
 
-  // Buscar datos CUIT en BCRA/AFIP
+  // Buscar CUIT con Razón Social + Condición IVA
   const buscarCuit = async () => {
     const cleanCuit = cuit.replace(/\D/g, '');
     if (cleanCuit.length !== 11) {
@@ -81,23 +75,27 @@ export default function Home() {
     }
     setLoadingCuit(true);
     setMensajeCliente('');
+
     try {
       const res = await fetch(`https://api.v2.padron.ar/cuit/${cleanCuit}`);
       if (res.ok) {
         const data = await res.json();
         setRazonSocial(data.denominacion || data.nombre || '');
         if (data.direccion) setDireccion(data.direccion);
+        if (data.condicion_iva || data.iva) {
+          setCondicionIva(data.condicion_iva || data.iva);
+        }
+        setMensajeCliente('✅ Datos autocompletados correctamente.');
       } else {
-        setMensajeCliente('No se encontraron datos automáticos para este CUIT. Puedes ingresarlos manualmente.');
+        setMensajeCliente('No se encontraron datos automáticos. Podés completarlos manualmente.');
       }
     } catch {
-      setMensajeCliente('Error al consultar padrón. Ingresa la Razón Social manualmente.');
+      setMensajeCliente('Error al consultar el padrón. Completá los datos manualmente.');
     } finally {
       setLoadingCuit(false);
     }
   };
 
-  // Guardar Cliente en Supabase
   const guardarCliente = async (e) => {
     e.preventDefault();
     setMensajeCliente('');
@@ -107,7 +105,7 @@ export default function Home() {
     }
 
     const { error } = await supabase.from('clientes').insert([
-      { cuit, razon_social: razonSocial, email, telefono, direccion }
+      { cuit, razon_social: razonSocial, condicion_iva: condicionIva, email, telefono, direccion }
     ]);
 
     if (error) {
@@ -116,6 +114,7 @@ export default function Home() {
       setMensajeCliente('¡Cliente guardado con éxito!');
       setCuit('');
       setRazonSocial('');
+      setCondicionIva('Monotributo');
       setEmail('');
       setTelefono('');
       setDireccion('');
@@ -123,7 +122,6 @@ export default function Home() {
     }
   };
 
-  // PANTALLA DE LOGIN
   if (!session) {
     return (
       <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '100vh', backgroundColor: '#0f172a', fontFamily: 'sans-serif' }}>
@@ -169,11 +167,9 @@ export default function Home() {
     );
   }
 
-  // PANTALLA PRINCIPAL (AUTENTICADO)
   return (
     <div style={{ minHeight: '100vh', backgroundColor: '#0f172a', color: '#f8fafc', fontFamily: 'sans-serif' }}>
       
-      {/* NAVBAR SUPERIOR */}
       <header style={{ background: '#1e293b', borderBottom: '1px solid #334155', padding: '0.75rem 2rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '2rem' }}>
           <h1 style={{ fontSize: '1.25rem', color: '#f59e0b', margin: 0, fontWeight: 'bold' }}>Agro-Repuestos & Bulonería</h1>
@@ -200,28 +196,24 @@ export default function Home() {
 
       <main style={{ padding: '2rem', maxWidth: '1200px', margin: '0 auto' }}>
         
-        {/* PESTAÑA 1: STOCK Y PEDIDOS */}
         {activeTab === 'pedidos' && (
           <div>
             <h2 style={{ color: '#cbd5e1', marginBottom: '1.5rem' }}>Gestión de Stock y Pedidos de Venta</h2>
             <div style={{ background: '#1e293b', padding: '2rem', borderRadius: '8px', border: '1px solid #334155', textAlign: 'center' }}>
               <p style={{ color: '#94a3b8', fontSize: '1.1rem' }}>Módulo de Puntos de Venta y Stock en preparación.</p>
-              <p style={{ color: '#64748b', fontSize: '0.9rem' }}>Aquí podrás armar carritos de repuestos, aplicar descuentos y registrar ventas a clientes.</p>
             </div>
           </div>
         )}
 
-        {/* PESTAÑA 2: CLIENTES Y CUENTAS CORRIENTES */}
         {activeTab === 'clientes' && (
           <div>
             <h2 style={{ color: '#cbd5e1', marginBottom: '1.5rem' }}>Gestión de Clientes y Cuentas Corrientes</h2>
 
-            {/* FORMULARIO CLIENTE */}
             <div style={{ background: '#1e293b', padding: '1.5rem', borderRadius: '8px', border: '1px solid #334155', marginBottom: '2rem' }}>
               <h3 style={{ marginTop: 0, color: '#f59e0b', fontSize: '1.1rem' }}>Nuevo Cliente</h3>
 
               {mensajeCliente && (
-                <div style={{ padding: '0.5rem 1rem', borderRadius: '6px', marginBottom: '1rem', background: mensajeCliente.includes('éxito') ? '#064e3b' : '#450a0a', color: mensajeCliente.includes('éxito') ? '#a7f3d0' : '#fca5a5', fontSize: '0.9rem' }}>
+                <div style={{ padding: '0.5rem 1rem', borderRadius: '6px', marginBottom: '1rem', background: mensajeCliente.includes('éxito') || mensajeCliente.includes('✅') ? '#064e3b' : '#450a0a', color: mensajeCliente.includes('éxito') || mensajeCliente.includes('✅') ? '#a7f3d0' : '#fca5a5', fontSize: '0.9rem' }}>
                   {mensajeCliente}
                 </div>
               )}
@@ -254,6 +246,20 @@ export default function Home() {
                 </div>
 
                 <div>
+                  <label style={{ display: 'block', fontSize: '0.8rem', color: '#94a3b8', marginBottom: '0.25rem' }}>Condición IVA</label>
+                  <select 
+                    value={condicionIva} 
+                    onChange={(e) => setCondicionIva(e.target.value)}
+                    style={{ width: '100%', padding: '0.5rem', borderRadius: '4px', border: '1px solid #475569', background: '#0f172a', color: '#fff' }}
+                  >
+                    <option value="Responsable Inscripto">Responsable Inscripto</option>
+                    <option value="Monotributo">Monotributo</option>
+                    <option value="Exento">Exento</option>
+                    <option value="Consumidor Final">Consumidor Final</option>
+                  </select>
+                </div>
+
+                <div>
                   <label style={{ display: 'block', fontSize: '0.8rem', color: '#94a3b8', marginBottom: '0.25rem' }}>Email</label>
                   <input 
                     type="email" 
@@ -273,7 +279,7 @@ export default function Home() {
                   />
                 </div>
 
-                <div style={{ gridColumn: '1 / -1' }}>
+                <div>
                   <label style={{ display: 'block', fontSize: '0.8rem', color: '#94a3b8', marginBottom: '0.25rem' }}>Dirección</label>
                   <input 
                     type="text" 
@@ -291,22 +297,22 @@ export default function Home() {
               </form>
             </div>
 
-            {/* TABLA DE CLIENTES */}
             <div style={{ background: '#1e293b', borderRadius: '8px', border: '1px solid #334155', overflow: 'hidden' }}>
               <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '0.9rem' }}>
                 <thead>
                   <tr style={{ background: '#0f172a', color: '#f59e0b', borderBottom: '1px solid #334155' }}>
                     <th style={{ padding: '0.75rem 1rem' }}>Razón Social</th>
                     <th style={{ padding: '0.75rem 1rem' }}>CUIT</th>
+                    <th style={{ padding: '0.75rem 1rem' }}>Cond. IVA</th>
                     <th style={{ padding: '0.75rem 1rem' }}>Teléfono</th>
-                    <th style={{ padding: '0.75rem 1rem' }}>Email</th>
                     <th style={{ padding: '0.75rem 1rem' }}>Dirección</th>
+                    <th style={{ padding: '0.75rem 1rem' }}>BCRA</th>
                   </tr>
                 </thead>
                 <tbody>
                   {clientes.length === 0 ? (
                     <tr>
-                      <td colSpan="5" style={{ padding: '1.5rem', textAlign: 'center', color: '#64748b' }}>
+                      <td colSpan="6" style={{ padding: '1.5rem', textAlign: 'center', color: '#64748b' }}>
                         No hay clientes registrados aún.
                       </td>
                     </tr>
@@ -315,9 +321,19 @@ export default function Home() {
                       <tr key={c.id} style={{ borderBottom: '1px solid #334155' }}>
                         <td style={{ padding: '0.75rem 1rem', fontWeight: 'bold' }}>{c.razon_social}</td>
                         <td style={{ padding: '0.75rem 1rem', color: '#94a3b8' }}>{c.cuit}</td>
+                        <td style={{ padding: '0.75rem 1rem', color: '#94a3b8' }}>{c.condicion_iva || '-'}</td>
                         <td style={{ padding: '0.75rem 1rem', color: '#94a3b8' }}>{c.telefono || '-'}</td>
-                        <td style={{ padding: '0.75rem 1rem', color: '#94a3b8' }}>{c.email || '-'}</td>
                         <td style={{ padding: '0.75rem 1rem', color: '#94a3b8' }}>{c.direccion || '-'}</td>
+                        <td style={{ padding: '0.75rem 1rem' }}>
+                          <a 
+                            href={`https://www.bcra.gob.ar/BCRAyVos/Situacion_Crediticia.asp?error=0&CUIT=${c.cuit?.replace(/\D/g, '')}`} 
+                            target="_blank" 
+                            rel="noopener noreferrer"
+                            style={{ background: '#1e40af', color: '#93c5fd', padding: '0.25rem 0.6rem', borderRadius: '4px', textDecoration: 'none', fontSize: '0.75rem', fontWeight: 'bold', display: 'inline-block' }}
+                          >
+                            Ver Situación 🔗
+                          </a>
+                        </td>
                       </tr>
                     ))
                   )}
