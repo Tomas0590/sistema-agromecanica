@@ -64,17 +64,17 @@ export default function Home() {
   }
 
   // AUTOCOMPLETAR DATOS POR CUIT
+  // AUTOCOMPLETAR DATOS POR CUIT (A través de nuestra API Route)
   const buscarDatosPorCUIT = async (cuitIngresado) => {
     const cleanCuit = cuitIngresado.replace(/\D/g, '');
     if (cleanCuit.length !== 11) return;
 
     setBuscandoCuit(true);
     try {
-      const res = await fetch(`https://api.bcra.gob.ar/centraldedeudores/v1.0/Deudas/${cleanCuit}`);
+      const res = await fetch(`/api/bcra?cuit=${cleanCuit}`);
       if (res.ok) {
         const data = await res.json();
         if (data && data.results && data.results.denominacion) {
-          // Autocompletar Razón Social y sugerir IVA por tipo de CUIT (30/33/34 = Empresa)
           const esEmpresa = cleanCuit.startsWith('30') || cleanCuit.startsWith('33') || cleanCuit.startsWith('34');
           setNuevoCliente((prev) => ({
             ...prev,
@@ -89,14 +89,6 @@ export default function Home() {
       setBuscandoCuit(false);
     }
   };
-
-  const manejarCambioCuit = (e) => {
-    const valor = e.target.value;
-    setNuevoCliente({ ...nuevoCliente, cuit_dni: valor });
-
-    const cleanCuit = valor.replace(/\D/g, '');
-    if (cleanCuit.length === 11) {
-      buscarDatosPorCUIT(cleanCuit);
     }
   };
 
