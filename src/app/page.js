@@ -7,6 +7,16 @@ const SUPABASE_URL = 'https://tqfpcogdvhtvvhdqewdg.supabase.co';
 const SUPABASE_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'sb_publishable_MchMROFkf12BgkCahzrC5w_qAlaGXKr';
 const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 
+// Diccionario de colores y estilos idéntico al HTML
+const SITUATION_STYLES = {
+  1: { label: 'Sit 1 - Normal', bg: '#064e3b', color: '#22c55e', border: '#15803d' },
+  2: { label: 'Sit 2 - Riesgo Bajo', bg: '#1a2e05', color: '#84cc16', border: '#4d7c0f' },
+  3: { label: 'Sit 3 - Riesgo Medio', bg: '#451a03', color: '#f59e0b', border: '#b45309' },
+  4: { label: 'Sit 4 - Riesgo Alto', bg: '#431407', color: '#ea580c', border: '#c2410c' },
+  5: { label: 'Sit 5 - Irrecuperable', bg: '#450a0a', color: '#ef4444', border: '#b91c1c' },
+  6: { label: 'Sit 6 - Irrec. Técnica', bg: '#450a0a', color: '#b91c1c', border: '#7f1d1d' },
+};
+
 export default function Home() {
   // Autenticación
   const [session, setSession] = useState(null);
@@ -28,11 +38,11 @@ export default function Home() {
   const [loadingCuit, setLoadingCuit] = useState(false);
   const [mensajeCliente, setMensajeCliente] = useState('');
 
-  // Estados para Situaciones BCRA en Vivo
-  const [situacionesBcra, setSituacionesBcra] = useState({});
+  // Estado BCRA
+  const [resultadosBcra, setResultadosBcra] = useState({});
   const [loadingBcraId, setLoadingBcraId] = useState(null);
 
-  // Cliente Seleccionado para Modal
+  // Modal
   const [clienteSeleccionado, setClienteSeleccionado] = useState(null);
 
   useEffect(() => {
@@ -76,7 +86,7 @@ export default function Home() {
     await supabase.auth.signOut();
   };
 
-  // Autocompletar CUIT desde Padrón
+  // Buscar CUIT en Padrón
   const buscarCuit = async () => {
     const cleanCuit = cuit.replace(/\D/g, '');
     if (cleanCuit.length !== 11) {
@@ -89,7 +99,6 @@ export default function Home() {
     try {
       const targetUrl = `https://api.v2.padron.ar/cuit/${cleanCuit}`;
       const res = await fetch(`https://corsproxy.io/?${encodeURIComponent(targetUrl)}`);
-      
       if (res.ok) {
         const data = await res.json();
         if (data.denominacion || data.nombre) {
@@ -103,7 +112,7 @@ export default function Home() {
           return;
         }
       }
-      setMensajeCliente('⚠️ Padrón automático no disponible. Podes ingresar la Razón Social manualmente.');
+      setMensajeCliente('⚠️ Padrón automático no disponible. Ingresá la Razón Social manualmente.');
     } catch {
       setMensajeCliente('⚠️ Padrón automático no disponible. Ingresá la Razón Social manualmente.');
     } finally {
@@ -111,42 +120,61 @@ export default function Home() {
     }
   };
 
-  // Consultar BCRA e Inyectar la Situación con Color
-  const consultarSituacionBcra = async (clienteId, cuitCliente) => {
+  // Lógica exacta de consulta al BCRA proveniente de tu HTML
+  const consultarBcra = async (clienteId, cuitCliente) => {
     const cleanCuit = cuitCliente?.replace(/\D/g, '');
     if (!cleanCuit || cleanCuit.length !== 11) return;
 
     setLoadingBcraId(clienteId);
+
     try {
-      const targetUrl = `https://api.bcra.gob.ar/centraldedeudores/v1.0/Deudas/${cleanCuit}`;
-      const res = await fetch(`https://corsproxy.io/?${encodeURIComponent(targetUrl)}`);
-      
-      if (res.ok) {
-        const data = await res.json();
-        const deudas = data?.results?.periodos?.[0]?.detalles || [];
-        
-        if (deudas.length > 0) {
-          const peorSit = Math.max(...deudas.map(d => d.situacion || 1));
-          setSituacionesBcra(prev => ({
-            ...prev,
-            [clienteId]: { sit: peorSit, label: `Situación ${peorSit}` }
-          }));
-        } else {
-          setSituacionesBcra(prev => ({
-            ...prev,
-            [clienteId]: { sit: 1, label: 'Situación 1 (Normal)' }
-          }));
+      const urlDeudas = `https://api.bcra.gob.ar/centraldedeudores/v1.0/Deudas/${cleanCuit}`;
+      const urlCheques = `https://api.bcra.gob.ar/centraldedeudores/v1.0/Deudas/ChequesRechazados/${cleanCuit}`;
+
+      const [resDeudas, resCheques] = await Promise.allSettled([
+        fetch(`https://corsproxy.io/?${encodeURIComponent(urlDeudas)}`),
+        fetch(`https://corsproxy.io/?${encodeURIComponent(urlCheques)}`)
+      ]);
+
+      let maxSit = 1;
+      let totalDeuda = 0;
+      let chequesRechazados = 0;
+
+      if (resDeudas.status === 'fulfilled' && resDeudas.value.ok) {
+        const dataDeudas = await resDeudas.value.json();
+        const periodos = dataDeudas?.results?.periodos || [];
+        if (periodos.length > 0) {
+          const entidades = periodos[0].entidades || [];
+          entidades.forEach(e => {
+            totalDeuda += (e.monto || 0);
+            if (e.situacion > maxSit) maxSit = e.situacion;
+          });
         }
-      } else {
-        setSituacionesBcra(prev => ({
-          ...prev,
-          [clienteId]: { sit: 1, label: 'Situación 1 (Sin Deudas)' }
-        }));
       }
-    } catch {
-      setSituacionesBcra(prev => ({
+
+      if (resCheques.status === 'fulfilled' && resCheques.value.ok) {
+        const dataCheques = await resCheques.value.json();
+        const causales = dataCheques?.results?.causales || [];
+        causales.forEach(c => {
+          (c.entidades || []).forEach(e => {
+            chequesRechazados += (e.detalle || []).length;
+          });
+        });
+      }
+
+      setResultadosBcra(prev => ({
         ...prev,
-        [clienteId]: { sit: 0, label: 'Error al consultar' }
+        [clienteId]: {
+          maxSit,
+          totalDeuda,
+          chequesRechazados
+        }
+      }));
+
+    } catch {
+      setResultadosBcra(prev => ({
+        ...prev,
+        [clienteId]: { maxSit: 1, totalDeuda: 0, chequesRechazados: 0, error: true }
       }));
     } finally {
       setLoadingBcraId(null);
@@ -356,7 +384,7 @@ export default function Home() {
               </form>
             </div>
 
-            {/* TABLA PRINCIPAL DE CLIENTES */}
+            {/* TABLA DE CLIENTES */}
             <div style={{ background: '#1e293b', borderRadius: '8px', border: '1px solid #334155', overflow: 'hidden' }}>
               <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '0.9rem' }}>
                 <thead>
@@ -364,7 +392,7 @@ export default function Home() {
                     <th style={{ padding: '0.85rem 1rem' }}>Razón Social</th>
                     <th style={{ padding: '0.85rem 1rem' }}>CUIT</th>
                     <th style={{ padding: '0.85rem 1rem' }}>Cond. IVA</th>
-                    <th style={{ padding: '0.85rem 1rem', textAlign: 'center' }}>Situación BCRA</th>
+                    <th style={{ padding: '0.85rem 1rem', textAlign: 'center' }}>Evaluación BCRA</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -376,39 +404,47 @@ export default function Home() {
                     </tr>
                   ) : (
                     clientes.map((c) => {
-                      const infoBcra = situacionesBcra[c.id];
+                      const res = resultadosBcra[c.id];
+                      const style = res ? (SITUATION_STYLES[res.maxSit] || SITUATION_STYLES[1]) : null;
+
                       return (
                         <tr 
                           key={c.id} 
-                          style={{ borderBottom: '1px solid #334155', cursor: 'pointer', transition: 'background 0.2s' }}
+                          style={{ borderBottom: '1px solid #334155', cursor: 'pointer' }}
                           onClick={() => setClienteSeleccionado(c)}
                         >
                           <td style={{ padding: '0.85rem 1rem', fontWeight: 'bold', color: '#38bdf8' }}>
                             👤 {c.razon_social}
                           </td>
-                          <td style={{ padding: '0.85rem 1rem', color: '#cbd5e1' }}>{c.cuit}</td>
+                          <td style={{ padding: '0.85rem 1rem', color: '#cbd5e1', fontFamily: 'monospace' }}>{c.cuit}</td>
                           <td style={{ padding: '0.85rem 1rem', color: '#94a3b8' }}>{c.condicion_iva || '-'}</td>
                           <td style={{ padding: '0.85rem 1rem', textAlign: 'center' }} onClick={(e) => e.stopPropagation()}>
-                            {infoBcra ? (
-                              <span style={{ 
-                                padding: '0.35rem 0.75rem', 
-                                borderRadius: '20px', 
-                                fontSize: '0.8rem', 
-                                fontWeight: 'bold',
-                                display: 'inline-block',
-                                background: infoBcra.sit === 1 ? '#064e3b' : infoBcra.sit === 2 ? '#854d0e' : '#7f1d1d',
-                                color: infoBcra.sit === 1 ? '#a7f3d0' : infoBcra.sit === 2 ? '#fef08a' : '#fca5a5',
-                                border: `1px solid ${infoBcra.sit === 1 ? '#059669' : infoBcra.sit === 2 ? '#ca8a04' : '#dc2626'}`
-                              }}>
-                                {infoBcra.label}
-                              </span>
+                            {res ? (
+                              <div style={{ display: 'inline-flex', flexDirection: 'column', alignItems: 'center', gap: '0.25rem' }}>
+                                <span style={{ 
+                                  padding: '0.3rem 0.8rem', 
+                                  borderRadius: '20px', 
+                                  fontSize: '0.8rem', 
+                                  fontWeight: 'bold',
+                                  background: style.bg,
+                                  color: style.color,
+                                  border: `1px solid ${style.border}`
+                                }}>
+                                  {style.label}
+                                </span>
+                                {res.chequesRechazados > 0 && (
+                                  <span style={{ fontSize: '0.75rem', color: '#ef4444', fontWeight: 'bold' }}>
+                                    ⚠️ {res.chequesRechazados} cheque(s) rech.
+                                  </span>
+                                )}
+                              </div>
                             ) : (
                               <button 
-                                onClick={() => consultarSituacionBcra(c.id, c.cuit)}
+                                onClick={() => consultarBcra(c.id, c.cuit)}
                                 disabled={loadingBcraId === c.id}
-                                style={{ background: '#1e40af', color: '#93c5fd', border: 'none', padding: '0.35rem 0.75rem', borderRadius: '6px', fontSize: '0.75rem', fontWeight: 'bold', cursor: 'pointer' }}
+                                style={{ background: '#1e40af', color: '#93c5fd', border: 'none', padding: '0.35rem 0.8rem', borderRadius: '6px', fontSize: '0.75rem', fontWeight: 'bold', cursor: 'pointer' }}
                               >
-                                {loadingBcraId === c.id ? 'Consultando...' : 'Obtener Situación'}
+                                {loadingBcraId === c.id ? 'Consultando...' : 'Consultar BCRA'}
                               </button>
                             )}
                           </td>
@@ -420,7 +456,7 @@ export default function Home() {
               </table>
             </div>
 
-            {/* MODAL FICHA DE CLIENTE */}
+            {/* MODAL FICHA COMPLETA */}
             {clienteSeleccionado && (
               <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.7)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 1000 }} onClick={() => setClienteSeleccionado(null)}>
                 <div style={{ background: '#1e293b', border: '1px solid #475569', borderRadius: '12px', padding: '2rem', maxWidth: '500px', width: '90%', color: '#fff', boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.5)' }} onClick={(e) => e.stopPropagation()}>
@@ -428,7 +464,7 @@ export default function Home() {
                   <hr style={{ borderColor: '#334155', marginBottom: '1rem' }} />
                   
                   <div style={{ display: 'grid', gap: '0.75rem', fontSize: '0.95rem' }}>
-                    <p style={{ margin: 0 }}><strong style={{ color: '#94a3b8' }}>CUIT:</strong> {clienteSeleccionado.cuit}</p>
+                    <p style={{ margin: 0 }}><strong style={{ color: '#94a3b8' }}>CUIT:</strong> <span style={{ fontFamily: 'monospace' }}>{clienteSeleccionado.cuit}</span></p>
                     <p style={{ margin: 0 }}><strong style={{ color: '#94a3b8' }}>Condición IVA:</strong> {clienteSeleccionado.condicion_iva || '-'}</p>
                     <p style={{ margin: 0 }}><strong style={{ color: '#94a3b8' }}>Teléfono:</strong> {clienteSeleccionado.telefono || 'Sin registrar'}</p>
                     <p style={{ margin: 0 }}><strong style={{ color: '#94a3b8' }}>Email:</strong> {clienteSeleccionado.email || 'Sin registrar'}</p>
