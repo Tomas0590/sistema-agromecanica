@@ -84,7 +84,7 @@ export default function Home() {
     await supabase.auth.signOut();
   };
 
-  // Buscar CUIT confiable (BCRA + API AFIP Directa)
+  // Búsqueda de CUIT conectada a nuestro endpoint de servidor interno
   const buscarCuit = async () => {
     const cleanCuit = cuit.replace(/\D/g, '');
     if (cleanCuit.length !== 11) {
@@ -95,18 +95,23 @@ export default function Home() {
     setMensajeCliente('');
 
     try {
-      // 1. Probar API Central de Deudores BCRA
-      const resBcra = await fetch(`https://api.bcra.gob.ar/centraldedeudores/v1.0/Deudas/${cleanCuit}`);
-      if (resBcra.ok) {
-        const dataBcra = await resBcra.json();
-        if (dataBcra?.results?.denominacion) {
-          setRazonSocial(dataBcra.results.denominacion);
-          setMensajeCliente('✅ Razón Social autocompletada desde el BCRA.');
-          setLoadingCuit(false);
-          return;
-        }
-      }
+      const res = await fetch(`/api/cuit?cuit=${cleanCuit}`);
+      const data = await res.json();
 
+      if (res.ok && data.razonSocial) {
+        setRazonSocial(data.razonSocial);
+        if (data.direccion) setDireccion(data.direccion);
+        if (data.condicionIva) setCondicionIva(data.condicionIva);
+        setMensajeCliente(`✅ Razón Social autocompletada desde ${data.origen}.`);
+      } else {
+        setMensajeCliente('⚠️ No se encontraron datos automáticos para este CUIT. Ingresalos manualmente.');
+      }
+    } catch {
+      setMensajeCliente('⚠️ Ocurrió un error al consultar el CUIT. Completá los datos manualmente.');
+    } finally {
+      setLoadingCuit(false);
+    }
+  };
       // 2. Probar API AFIP pública directa
       const resAfip = await fetch(`https://afip.republica.dev/cuit/${cleanCuit}`);
       if (resAfip.ok) {
