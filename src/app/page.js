@@ -277,7 +277,7 @@ export default function Home() {
         ...prev,
         [clienteId]: { maxSit: 1, totalDeuda: 0, chequesRechazados: 0, error: true }
       }));
-    } fontally {
+    } finally {
       setLoadingBcraId(null);
     }
   };
