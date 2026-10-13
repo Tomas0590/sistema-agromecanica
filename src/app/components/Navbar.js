@@ -4,7 +4,7 @@ export default function Navbar({ activeTab, setActiveTab, onLogout }) {
   return (
     <header style={{ background: '#1e293b', borderBottom: '1px solid #334155', padding: '0.75rem 2rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: '2rem' }}>
-        <h1 style={{ fontSize: '1.25rem', color: '#f59e0b', margin: 0, fontWeight: 'bold' }}>Agro-Repuestos & Bulonería</h1>
+        <h1 style={{ fontSize: '1.25rem', color: '#f59e0b', margin: 0, fontWeight: 'bold' }}>Agromecanica</h1>
         <nav style={{ display: 'flex', gap: '0.5rem' }}>
           <button 
             onClick={() => setActiveTab('pedidos')} 
