@@ -31,13 +31,13 @@ export default function Home() {
   const [loadingCuit, setLoadingCuit] = useState(false);
   const [mensajeCliente, setMensajeCliente] = useState('');
 
+  const [mostrarModalForm, setMostrarModalForm] = useState(false);
+
   const [resultadosBcra, setResultadosBcra] = useState({});
   const [loadingBcraId, setLoadingBcraId] = useState(null);
   const [clienteSeleccionado, setClienteSeleccionado] = useState(null);
 
   const [autoCompletando, setAutoCompletando] = useState(false);
-  
-  // Estado para la verificación masiva del BCRA y lista de alertas
   const [consultandoMasivo, setConsultandoMasivo] = useState(false);
   const [alertaBcra, setAlertaBcra] = useState([]);
 
@@ -67,6 +67,18 @@ export default function Home() {
   };
 
   const handleLogout = async () => await supabase.auth.signOut();
+
+  const abrirNuevoCliente = () => {
+    setEditingId(null);
+    setCuit('');
+    setRazonSocial('');
+    setCondicionIva('Monotributo');
+    setEmail('');
+    setTelefono('');
+    setDireccion('');
+    setMensajeCliente('');
+    setMostrarModalForm(true);
+  };
 
   const buscarCuit = async () => {
     const cleanCuit = cuit.replace(/\D/g, '');
@@ -134,7 +146,6 @@ export default function Home() {
     cargarClientes();
   };
 
-  // CONSULTA MASIVA AL BCRA
   const consultarBcraMasivo = async () => {
     if (clientes.length === 0) return;
     setConsultandoMasivo(true);
@@ -188,7 +199,6 @@ export default function Home() {
           [c.id]: { maxSit, totalDeuda, chequesRechazados }
         }));
 
-        // Si salta Situación 2 o peor, o tiene cheques rechazados, agregar a la lista de observación
         if (maxSit >= 2 || chequesRechazados > 0) {
           alertas.push({
             id: c.id,
@@ -200,7 +210,7 @@ export default function Home() {
           });
         }
       } catch (e) {
-        // Ignorar fallas puntuales
+        // Ignorar
       }
 
       procesados++;
@@ -267,7 +277,7 @@ export default function Home() {
         ...prev,
         [clienteId]: { maxSit: 1, totalDeuda: 0, chequesRechazados: 0, error: true }
       }));
-    } finally {
+    } fontally {
       setLoadingBcraId(null);
     }
   };
@@ -281,10 +291,13 @@ export default function Home() {
     setTelefono(c.telefono || '');
     setDireccion(c.direccion || '');
     setClienteSeleccionado(null);
-    setMensajeCliente('✏️ Modo edición activado. Modificá los datos y presioná "Guardar Cambios".');
+    setMensajeCliente('');
+    setMostrarModalForm(true);
   };
 
-  const cancelarEdicion = () => {
+  const cancelarEdicion = (e) => {
+    if (e && e.preventDefault) e.preventDefault();
+    setMostrarModalForm(false);
     setEditingId(null);
     setCuit('');
     setRazonSocial('');
@@ -319,7 +332,6 @@ export default function Home() {
     if (resultError) {
       setMensajeCliente(`Error al guardar: ${resultError.message}`);
     } else {
-      setMensajeCliente(editingId ? '¡Cliente actualizado con éxito!' : '¡Cliente guardado con éxito!');
       cancelarEdicion();
       cargarClientes();
     }
@@ -400,6 +412,13 @@ export default function Home() {
               
               <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
                 <button 
+                  onClick={abrirNuevoCliente}
+                  style={{ background: '#16a34a', color: '#fff', border: 'none', padding: '0.5rem 1rem', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold', fontSize: '0.85rem' }}
+                >
+                  ➕ Nuevo Cliente
+                </button>
+
+                <button 
                   onClick={autocompletarNombresMasivo}
                   disabled={autoCompletando || consultandoMasivo}
                   style={{ background: '#0284c7', color: '#fff', border: 'none', padding: '0.5rem 1rem', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold', fontSize: '0.85rem' }}
@@ -417,7 +436,7 @@ export default function Home() {
               </div>
             </div>
 
-            {/* CUADRO DE ALERTAS DE CLIENTES EN SITUACIÓN 2 O PEOR */}
+            {/* ALERTA BCRA */}
             {alertaBcra.length > 0 && (
               <div style={{ background: '#451a03', border: '1px solid #f59e0b', borderRadius: '8px', padding: '1.25rem', marginBottom: '1.5rem', color: '#fef3c7' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
@@ -452,20 +471,23 @@ export default function Home() {
               </div>
             )}
 
-            <FormCliente 
-              editingId={editingId}
-              cuit={cuit} setCuit={setCuit}
-              razonSocial={razonSocial} setRazonSocial={setRazonSocial}
-              condicionIva={condicionIva} setCondicionIva={setCondicionIva}
-              email={email} setEmail={setEmail}
-              telefono={telefono} setTelefono={setTelefono}
-              direccion={direccion} setDireccion={setDireccion}
-              loadingCuit={loadingCuit}
-              mensajeCliente={mensajeCliente}
-              onBuscarCuit={buscarCuit}
-              onGuardar={guardarCliente}
-              onCancelarEdicion={cancelarEdicion}
-            />
+            {/* FORMULARIO FLOTANTE (MODAL) */}
+            {mostrarModalForm && (
+              <FormCliente 
+                editingId={editingId}
+                cuit={cuit} setCuit={setCuit}
+                razonSocial={razonSocial} setRazonSocial={setRazonSocial}
+                condicionIva={condicionIva} setCondicionIva={setCondicionIva}
+                email={email} setEmail={setEmail}
+                telefono={telefono} setTelefono={setTelefono}
+                direccion={direccion} setDireccion={setDireccion}
+                loadingCuit={loadingCuit}
+                mensajeCliente={mensajeCliente}
+                onBuscarCuit={buscarCuit}
+                onGuardar={guardarCliente}
+                onCancelarEdicion={cancelarEdicion}
+              />
+            )}
 
             <TablaClientes 
               clientes={clientes}
