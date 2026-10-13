@@ -15,37 +15,43 @@ export default function FormCliente({
   onCancelarEdicion
 }) {
   return (
-    <div style={{
-      position: 'fixed',
-      top: 0,
-      left: 0,
-      right: 0,
-      bottom: 0,
-      backgroundColor: 'rgba(15, 23, 42, 0.8)',
-      backdropFilter: 'blur(4px)',
-      zIndex: 1000,
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'center',
-      padding: '1rem'
-    }}>
-      <div style={{
-        background: '#1e293b',
-        border: '1px solid #334155',
-        borderRadius: '12px',
-        width: '100%',
-        maxWidth: '560px',
-        padding: '1.75rem',
-        color: '#f8fafc',
-        boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.5), 0 8px 10px -6px rgba(0, 0, 0, 0.5)'
-      }}>
+    <div 
+      onClick={onCancelarEdicion}
+      style={{
+        position: 'fixed',
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+        backgroundColor: 'rgba(15, 23, 42, 0.85)',
+        backdropFilter: 'blur(4px)',
+        zIndex: 1000,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        padding: '1rem'
+      }}
+    >
+      <div 
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          background: '#1e293b',
+          border: '1px solid #334155',
+          borderRadius: '12px',
+          width: '100%',
+          maxWidth: '560px',
+          padding: '1.75rem',
+          color: '#f8fafc',
+          boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.5), 0 8px 10px -6px rgba(0, 0, 0, 0.5)'
+        }}
+      >
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem', borderBottom: '1px solid #334155', paddingBottom: '0.75rem' }}>
           <h3 style={{ margin: 0, color: '#f59e0b', fontSize: '1.2rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
             {editingId ? '✏️ Editar Cliente' : '➕ Nuevo Cliente'}
           </h3>
           <button 
             type="button" 
-            onClick={onCancelarEdicion}
+            onClick={(e) => { e.preventDefault(); onCancelarEdicion(e); }}
             style={{ background: 'transparent', border: 'none', color: '#94a3b8', fontSize: '1.25rem', cursor: 'pointer', padding: '0.2rem 0.5rem' }}
           >
             ✕
@@ -242,7 +248,7 @@ export default function FormCliente({
           <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem', borderTop: '1px solid #334155', paddingTop: '1rem' }}>
             <button
               type="button"
-              onClick={onCancelarEdicion}
+              onClick={(e) => { e.preventDefault(); onCancelarEdicion(e); }}
               style={{
                 background: '#334155',
                 color: '#cbd5e1',
