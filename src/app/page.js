@@ -35,6 +35,8 @@ export default function Home() {
   const [loadingBcraId, setLoadingBcraId] = useState(null);
   const [clienteSeleccionado, setClienteSeleccionado] = useState(null);
 
+  const [autoCompletando, setAutoCompletando] = useState(false);
+
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => setSession(session));
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => setSession(session));
@@ -88,6 +90,45 @@ export default function Home() {
     } finally {
       setLoadingCuit(false);
     }
+  };
+
+  // Función para resolver nombres pendientes de forma automática en lote
+  const autocompletarNombresMasivo = async () => {
+    const pendientes = clientes.filter(c => !c.razon_social || c.razon_social.includes('Pendiente') || c.razon_social.includes('Cliente'));
+    
+    if (pendientes.length === 0) {
+      setMensajeCliente('✅ Todos los clientes ya tienen Razón Social asignada.');
+      return;
+    }
+
+    setAutoCompletando(true);
+    setMensajeCliente(`⏳ Autocompletando ${pendientes.length} nombres desde BCRA/AFIP... Por favor esperá.`);
+
+    let procesados = 0;
+    for (let c of pendientes) {
+      try {
+        const res = await fetch(`/api/cuit?cuit=${c.cuit}`);
+        if (res.ok) {
+          const data = await res.json();
+          if (data.razonSocial) {
+            await supabase.from('clientes').update({ 
+              razon_social: data.razonSocial,
+              condicion_iva: data.condicionIva || c.condicion_iva,
+              direccion: data.direccion || c.direccion
+            }).eq('id', c.id);
+          }
+        }
+      } catch (e) {
+        // Ignorar fallas individuales y continuar
+      }
+      procesados++;
+      setMensajeCliente(`⏳ Autocompletando nombres... (${procesados}/${pendientes.length})`);
+      await new Promise(r => setTimeout(r, 200));
+    }
+
+    setAutoCompletando(false);
+    setMensajeCliente('🎉 ¡Proceso finalizado! Nombres actualizados desde la base oficial.');
+    cargarClientes();
   };
 
   const consultarBcra = async (clienteId, cuitCliente) => {
@@ -212,8 +253,8 @@ export default function Home() {
     return (
       <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '100vh', backgroundColor: '#0f172a', fontFamily: 'sans-serif' }}>
         <form onSubmit={handleLogin} style={{ background: '#1e293b', padding: '2.5rem', borderRadius: '12px', color: '#fff', width: '340px', boxShadow: '0 10px 25px rgba(0,0,0,0.5)' }}>
-          <h2 style={{ marginBottom: '0.25rem', textAlign: 'center', color: '#f59e0b', fontSize: '1.5rem' }}>Agro-Repuestos</h2>
-          <p style={{ marginBottom: '1.5rem', textAlign: 'center', fontSize: '0.875rem', color: '#94a3b8' }}>& Bulonería — Acceso</p>
+          <h2 style={{ marginBottom: '0.25rem', textAlign: 'center', color: '#f59e0b', fontSize: '1.5rem' }}>Agromecanica</h2>
+          <p style={{ marginBottom: '1.5rem', textAlign: 'center', fontSize: '0.875rem', color: '#94a3b8' }}>Acceso al Sistema</p>
           
           {errorAuth && (
             <div style={{ background: '#450a0a', border: '1px solid #ef4444', color: '#fca5a5', padding: '0.5rem', borderRadius: '6px', fontSize: '0.875rem', marginBottom: '1rem', textAlign: 'center' }}>
@@ -269,7 +310,17 @@ export default function Home() {
 
         {activeTab === 'clientes' && (
           <div>
-            <h2 style={{ color: '#cbd5e1', marginBottom: '1.5rem' }}>Gestión de Clientes y Cuentas Corrientes</h2>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
+              <h2 style={{ color: '#cbd5e1', margin: 0 }}>Gestión de Clientes y Cuentas Corrientes</h2>
+              
+              <button 
+                onClick={autocompletarNombresMasivo}
+                disabled={autoCompletando}
+                style={{ background: '#0284c7', color: '#fff', border: 'none', padding: '0.5rem 1rem', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold', fontSize: '0.85rem' }}
+              >
+                {autoCompletando ? '⏳ Procesando...' : '⚡ Autocompletar Nombres Pendientes'}
+              </button>
+            </div>
 
             <FormCliente 
               editingId={editingId}
