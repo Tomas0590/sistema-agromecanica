@@ -13,93 +13,90 @@ const SITUATION_STYLES = {
 
 export default function TablaClientes({ clientes, resultadosBcra, loadingBcraId, onConsultarBcra, onPrepararEdicion, onSelectCliente }) {
   const [busqueda, setBusqueda] = useState('');
-  const [ordenColumna, setOrdenColumna] = useState('razon_social');
-  const [ordenAsc, setOrdenAsc] = useState(true);
+  const [sortField, setSortField] = useState('razon_social');
+  const [sortOrder, setSortOrder] = useState('asc');
 
-  const cambiarOrden = (columna) => {
-    if (ordenColumna === columna) {
-      setOrdenAsc(!ordenAsc);
+  const handleSort = (field) => {
+    if (sortField === field) {
+      setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc');
     } else {
-      setOrdenColumna(columna);
-      setOrdenAsc(true);
+      setSortField(field);
+      setSortOrder(field === 'bcra' ? 'desc' : 'asc');
     }
   };
 
-  // 1. Filtrar por texto (Razón Social o CUIT)
+  const renderSortIcon = (field) => {
+    if (sortField !== field) return <span style={{ color: '#64748b', fontSize: '0.75rem', marginLeft: '0.25rem' }}>⇅</span>;
+    return <span style={{ color: '#f59e0b', fontSize: '0.75rem', marginLeft: '0.25rem' }}>{sortOrder === 'asc' ? '▲' : '▼'}</span>;
+  };
+
   const clientesFiltrados = clientes.filter((c) => {
-    const query = busqueda.toLowerCase().trim();
-    if (!query) return true;
+    const term = busqueda.toLowerCase().trim();
+    if (!term) return true;
     const razon = (c.razon_social || '').toLowerCase();
-    const cuitClean = (c.cuit || '').replace(/\D/g, '');
-    return razon.includes(query) || cuitClean.includes(query);
+    const cuitStr = (c.cuit || '').toLowerCase();
+    const iva = (c.condicion_iva || '').toLowerCase();
+    const tel = (c.telefono || '').toLowerCase();
+    const dir = (c.direccion || '').toLowerCase();
+    return razon.includes(term) || cuitStr.includes(term) || iva.includes(term) || tel.includes(term) || dir.includes(term);
   });
 
-  // 2. Ordenar clientes según la columna seleccionada
   const clientesOrdenados = [...clientesFiltrados].sort((a, b) => {
-    if (ordenColumna === 'razon_social') {
-      const valA = (a.razon_social || '').toLowerCase();
-      const valB = (b.razon_social || '').toLowerCase();
-      return ordenAsc ? valA.localeCompare(valB) : valB.localeCompare(valA);
+    let valA;
+    let valB;
+
+    if (sortField === 'razon_social') {
+      valA = (a.razon_social || '').toLowerCase();
+      valB = (b.razon_social || '').toLowerCase();
+    } else if (sortField === 'cuit') {
+      valA = a.cuit || '';
+      valB = b.cuit || '';
+    } else if (sortField === 'condicion_iva') {
+      valA = (a.condicion_iva || '').toLowerCase();
+      valB = (b.condicion_iva || '').toLowerCase();
+    } else if (sortField === 'bcra') {
+      valA = resultadosBcra[a.id]?.maxSit || 0;
+      valB = resultadosBcra[b.id]?.maxSit || 0;
+    } else {
+      return 0;
     }
 
-    if (ordenColumna === 'cuit') {
-      const valA = a.cuit || '';
-      const valB = b.cuit || '';
-      return ordenAsc ? valA.localeCompare(valB) : valB.localeCompare(valA);
-    }
-
-    if (ordenColumna === 'condicion_iva') {
-      const valA = (a.condicion_iva || '').toLowerCase();
-      const valB = (b.condicion_iva || '').toLowerCase();
-      return ordenAsc ? valA.localeCompare(valB) : valB.localeCompare(valA);
-    }
-
-    if (ordenColumna === 'bcra') {
-      const sitA = resultadosBcra[a.id]?.maxSit || 0;
-      const sitB = resultadosBcra[b.id]?.maxSit || 0;
-      return ordenAsc ? sitB - sitA : sitA - sitB; // Muestra mayor riesgo primero
-    }
-
+    if (valA < valB) return sortOrder === 'asc' ? -1 : 1;
+    if (valA > valB) return sortOrder === 'asc' ? 1 : -1;
     return 0;
   });
 
   return (
     <div style={{ background: '#1e293b', borderRadius: '8px', border: '1px solid #334155', overflow: 'hidden' }}>
-      
       {/* BARRA DE BÚSQUEDA */}
-      <div style={{ padding: '0.85rem 1rem', background: '#0f172a', borderBottom: '1px solid #334155', display: 'flex', gap: '0.75rem', alignItems: 'center' }}>
-        <span style={{ fontSize: '1.1rem' }}>🔍</span>
-        <input 
+      <div style={{ padding: '1rem', borderBottom: '1px solid #334155', background: '#0f172a', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '1rem' }}>
+        <input
           type="text"
-          placeholder="Buscar cliente por Razón Social o CUIT..."
+          placeholder="🔍 Buscar cliente por Razón Social, CUIT, Localidad..."
           value={busqueda}
           onChange={(e) => setBusqueda(e.target.value)}
-          style={{ width: '100%', padding: '0.5rem 0.8rem', borderRadius: '6px', border: '1px solid #475569', background: '#1e293b', color: '#fff', outline: 'none', fontSize: '0.9rem' }}
+          style={{ width: '100%', maxWidth: '450px', padding: '0.6rem 1rem', borderRadius: '6px', border: '1px solid #475569', background: '#1e293b', color: '#fff', fontSize: '0.9rem', outline: 'none' }}
         />
-        {busqueda && (
-          <button 
-            onClick={() => setBusqueda('')}
-            style={{ background: '#334155', border: 'none', color: '#94a3b8', padding: '0.4rem 0.8rem', borderRadius: '4px', cursor: 'pointer', fontSize: '0.8rem', whiteSpace: 'nowrap' }}
-          >
-            Limpiar
-          </button>
-        )}
+        <span style={{ fontSize: '0.8rem', color: '#94a3b8', whiteSpace: 'nowrap' }}>
+          Mostrando {clientesOrdenados.length} de {clientes.length}
+        </span>
       </div>
 
+      {/* TABLA DE CLIENTES */}
       <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '0.9rem' }}>
         <thead>
           <tr style={{ background: '#0f172a', color: '#f59e0b', borderBottom: '1px solid #334155', userSelect: 'none' }}>
-            <th onClick={() => cambiarOrden('razon_social')} style={{ padding: '0.85rem 1rem', cursor: 'pointer' }}>
-              Razón Social ({clientesOrdenados.length}) {ordenColumna === 'razon_social' ? (ordenAsc ? '▲' : '▼') : ''}
+            <th onClick={() => handleSort('razon_social')} style={{ padding: '0.85rem 1rem', cursor: 'pointer' }}>
+              Razón Social {renderSortIcon('razon_social')}
             </th>
-            <th onClick={() => cambiarOrden('cuit')} style={{ padding: '0.85rem 1rem', cursor: 'pointer' }}>
-              CUIT {ordenColumna === 'cuit' ? (ordenAsc ? '▲' : '▼') : ''}
+            <th onClick={() => handleSort('cuit')} style={{ padding: '0.85rem 1rem', cursor: 'pointer' }}>
+              CUIT {renderSortIcon('cuit')}
             </th>
-            <th onClick={() => cambiarOrden('condicion_iva')} style={{ padding: '0.85rem 1rem', cursor: 'pointer' }}>
-              Cond. IVA {ordenColumna === 'condicion_iva' ? (ordenAsc ? '▲' : '▼') : ''}
+            <th onClick={() => handleSort('condicion_iva')} style={{ padding: '0.85rem 1rem', cursor: 'pointer' }}>
+              Cond. IVA {renderSortIcon('condicion_iva')}
             </th>
-            <th onClick={() => cambiarOrden('bcra')} style={{ padding: '0.85rem 1rem', textAlign: 'center', cursor: 'pointer' }}>
-              Situación BCRA {ordenColumna === 'bcra' ? (ordenAsc ? '▲ (Mayor Riesgo)' : '▼ (Menor Riesgo)') : ''}
+            <th onClick={() => handleSort('bcra')} style={{ padding: '0.85rem 1rem', textAlign: 'center', cursor: 'pointer' }}>
+              Situación BCRA {renderSortIcon('bcra')}
             </th>
             <th style={{ padding: '0.85rem 1rem', textAlign: 'center' }}>Acción</th>
           </tr>
@@ -115,6 +112,8 @@ export default function TablaClientes({ clientes, resultadosBcra, loadingBcraId,
             clientesOrdenados.map((c) => {
               const res = resultadosBcra[c.id];
               const style = res ? (SITUATION_STYLES[res.maxSit] || SITUATION_STYLES[1]) : null;
+              const cleanCuit = c.cuit ? c.cuit.replace(/\D/g, '') : '';
+              const urlLaMacro = `https://www.lamacro.ar/central-de-deudores/${cleanCuit}`;
 
               return (
                 <tr 
@@ -129,27 +128,42 @@ export default function TablaClientes({ clientes, resultadosBcra, loadingBcraId,
                   <td style={{ padding: '0.85rem 1rem', color: '#94a3b8' }}>{c.condicion_iva || '-'}</td>
                   
                   <td style={{ padding: '0.85rem 1rem', textAlign: 'center' }} onClick={(e) => e.stopPropagation()}>
-                    {res ? (
-                      <div style={{ display: 'inline-flex', flexDirection: 'column', alignItems: 'center', gap: '0.25rem' }}>
-                        <span style={{ 
-                          padding: '0.3rem 0.8rem', 
-                          borderRadius: '20px', 
-                          fontSize: '0.8rem', 
-                          fontWeight: 'bold',
-                          background: style.bg,
-                          color: style.color,
-                          border: `1px solid ${style.border}`
-                        }}>
-                          {style.label}
-                        </span>
-                        {res.chequesRechazados > 0 && (
-                          <span style={{ fontSize: '0.75rem', color: '#ef4444', fontWeight: 'bold' }}>
-                            ⚠️ {res.chequesRechazados} cheque(s)
+                    {cleanCuit ? (
+                      <a
+                        href={urlLaMacro}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        title="Ver informe completo en La Macro"
+                        style={{ textDecoration: 'none', display: 'inline-flex', flexDirection: 'column', alignItems: 'center', gap: '0.25rem' }}
+                      >
+                        {res ? (
+                          <>
+                            <span style={{ 
+                              padding: '0.3rem 0.8rem', 
+                              borderRadius: '20px', 
+                              fontSize: '0.8rem', 
+                              fontWeight: 'bold',
+                              background: style.bg,
+                              color: style.color,
+                              border: `1px solid ${style.border}`,
+                              cursor: 'pointer'
+                            }}>
+                              {style.label} ↗
+                            </span>
+                            {res.chequesRechazados > 0 && (
+                              <span style={{ fontSize: '0.75rem', color: '#ef4444', fontWeight: 'bold' }}>
+                                ⚠️ {res.chequesRechazados} cheque(s)
+                              </span>
+                            )}
+                          </>
+                        ) : (
+                          <span style={{ fontSize: '0.8rem', color: '#38bdf8', textDecoration: 'underline', cursor: 'pointer' }}>
+                            Ver en La Macro ↗
                           </span>
                         )}
-                      </div>
+                      </a>
                     ) : (
-                      <span style={{ fontSize: '0.8rem', color: '#64748b' }}>Sin consultar</span>
+                      <span style={{ fontSize: '0.8rem', color: '#64748b' }}>Sin CUIT</span>
                     )}
                   </td>
 
