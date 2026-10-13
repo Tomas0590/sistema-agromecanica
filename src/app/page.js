@@ -36,6 +36,10 @@ export default function Home() {
   const [clienteSeleccionado, setClienteSeleccionado] = useState(null);
 
   const [autoCompletando, setAutoCompletando] = useState(false);
+  
+  // Estado para la verificación masiva del BCRA y lista de alertas
+  const [consultandoMasivo, setConsultandoMasivo] = useState(false);
+  const [alertaBcra, setAlertaBcra] = useState([]);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => setSession(session));
@@ -92,7 +96,6 @@ export default function Home() {
     }
   };
 
-  // Función para resolver nombres pendientes de forma automática en lote
   const autocompletarNombresMasivo = async () => {
     const pendientes = clientes.filter(c => !c.razon_social || c.razon_social.includes('Pendiente') || c.razon_social.includes('Cliente'));
     
@@ -119,7 +122,7 @@ export default function Home() {
           }
         }
       } catch (e) {
-        // Ignorar fallas individuales y continuar
+        // Ignorar
       }
       procesados++;
       setMensajeCliente(`⏳ Autocompletando nombres... (${procesados}/${pendientes.length})`);
@@ -129,6 +132,88 @@ export default function Home() {
     setAutoCompletando(false);
     setMensajeCliente('🎉 ¡Proceso finalizado! Nombres actualizados desde la base oficial.');
     cargarClientes();
+  };
+
+  // CONSULTA MASIVA AL BCRA
+  const consultarBcraMasivo = async () => {
+    if (clientes.length === 0) return;
+    setConsultandoMasivo(true);
+    setAlertaBcra([]);
+    setMensajeCliente(`⏳ Verificando BCRA para ${clientes.length} clientes... Por favor esperá.`);
+
+    const alertas = [];
+    let procesados = 0;
+
+    for (let c of clientes) {
+      if (!c.cuit || c.cuit.replace(/\D/g, '').length !== 11) continue;
+      const cleanCuit = c.cuit.replace(/\D/g, '');
+
+      let maxSit = 1;
+      let totalDeuda = 0;
+      let chequesRechazados = 0;
+
+      try {
+        const urlDeudas = `https://api.bcra.gob.ar/centraldedeudores/v1.0/Deudas/${cleanCuit}`;
+        const urlCheques = `https://api.bcra.gob.ar/centraldedeudores/v1.0/Deudas/ChequesRechazados/${cleanCuit}`;
+
+        const [resDeudas, resCheques] = await Promise.allSettled([
+          fetch(urlDeudas),
+          fetch(urlCheques)
+        ]);
+
+        if (resDeudas.status === 'fulfilled' && resDeudas.value.ok) {
+          const dataDeudas = await resDeudas.value.json();
+          const periodos = dataDeudas?.results?.periodos || [];
+          if (periodos.length > 0) {
+            const entidades = periodos[0].entidades || [];
+            entidades.forEach(e => {
+              totalDeuda += (e.monto || 0);
+              if (e.situacion > maxSit) maxSit = e.situacion;
+            });
+          }
+        }
+
+        if (resCheques.status === 'fulfilled' && resCheques.value.ok) {
+          const dataCheques = await resCheques.value.json();
+          const causales = dataCheques?.results?.causales || [];
+          causales.forEach(causal => {
+            (causal.entidades || []).forEach(e => {
+              chequesRechazados += (e.detalle || []).length;
+            });
+          });
+        }
+
+        setResultadosBcra(prev => ({
+          ...prev,
+          [c.id]: { maxSit, totalDeuda, chequesRechazados }
+        }));
+
+        // Si salta Situación 2 o peor, o tiene cheques rechazados, agregar a la lista de observación
+        if (maxSit >= 2 || chequesRechazados > 0) {
+          alertas.push({
+            id: c.id,
+            razon_social: c.razon_social,
+            cuit: c.cuit,
+            maxSit,
+            chequesRechazados,
+            totalDeuda
+          });
+        }
+      } catch (e) {
+        // Ignorar fallas puntuales
+      }
+
+      procesados++;
+      setMensajeCliente(`⏳ Verificando BCRA... (${procesados}/${clientes.length})`);
+      await new Promise(r => setTimeout(r, 150));
+    }
+
+    setAlertaBcra(alertas);
+    setConsultandoMasivo(false);
+    setMensajeCliente(alertas.length > 0 
+      ? `⚠️ Consulta finalizada. Se detectaron ${alertas.length} cliente(s) en Situación 2 o peor / con cheques.` 
+      : '🟢 Consulta finalizada. Todos los clientes consultados están en Situación 1 (Normal).'
+    );
   };
 
   const consultarBcra = async (clienteId, cuitCliente) => {
@@ -310,17 +395,62 @@ export default function Home() {
 
         {activeTab === 'clientes' && (
           <div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem', flexWrap: 'wrap', gap: '1rem' }}>
               <h2 style={{ color: '#cbd5e1', margin: 0 }}>Gestión de Clientes y Cuentas Corrientes</h2>
               
-              <button 
-                onClick={autocompletarNombresMasivo}
-                disabled={autoCompletando}
-                style={{ background: '#0284c7', color: '#fff', border: 'none', padding: '0.5rem 1rem', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold', fontSize: '0.85rem' }}
-              >
-                {autoCompletando ? '⏳ Procesando...' : '⚡ Autocompletar Nombres Pendientes'}
-              </button>
+              <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+                <button 
+                  onClick={autocompletarNombresMasivo}
+                  disabled={autoCompletando || consultandoMasivo}
+                  style={{ background: '#0284c7', color: '#fff', border: 'none', padding: '0.5rem 1rem', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold', fontSize: '0.85rem' }}
+                >
+                  {autoCompletando ? '⏳ Procesando...' : '⚡ Autocompletar Nombres Pendientes'}
+                </button>
+
+                <button 
+                  onClick={consultarBcraMasivo}
+                  disabled={autoCompletando || consultandoMasivo}
+                  style={{ background: '#d97706', color: '#fff', border: 'none', padding: '0.5rem 1rem', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold', fontSize: '0.85rem' }}
+                >
+                  {consultandoMasivo ? '⏳ Consultando BCRA...' : '🔍 Corroborar BCRA Masivamente'}
+                </button>
+              </div>
             </div>
+
+            {/* CUADRO DE ALERTAS DE CLIENTES EN SITUACIÓN 2 O PEOR */}
+            {alertaBcra.length > 0 && (
+              <div style={{ background: '#451a03', border: '1px solid #f59e0b', borderRadius: '8px', padding: '1.25rem', marginBottom: '1.5rem', color: '#fef3c7' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
+                  <h3 style={{ margin: 0, color: '#fbbf24', fontSize: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                    ⚠️ Clientes con Observaciones Crediticias (Sit. 2 o mayor / Cheques) — Total: {alertaBcra.length}
+                  </h3>
+                  <button 
+                    onClick={() => setAlertaBcra([])} 
+                    style={{ background: 'transparent', border: 'none', color: '#fcd34d', cursor: 'pointer', fontSize: '0.8rem', textDecoration: 'underline' }}
+                  >
+                    Ocultar aviso
+                  </button>
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '0.75rem' }}>
+                  {alertaBcra.map(a => (
+                    <div key={a.id} style={{ background: '#1e293b', padding: '0.75rem', borderRadius: '6px', borderLeft: '4px solid #f59e0b' }}>
+                      <p style={{ margin: 0, fontWeight: 'bold', color: '#38bdf8', fontSize: '0.9rem' }}>{a.razon_social}</p>
+                      <p style={{ margin: '0.25rem 0 0 0', fontSize: '0.8rem', fontFamily: 'monospace', color: '#cbd5e1' }}>CUIT: {a.cuit}</p>
+                      <div style={{ marginTop: '0.5rem', display: 'flex', gap: '0.5rem', alignItems: 'center', fontSize: '0.75rem' }}>
+                        <span style={{ padding: '0.2rem 0.5rem', borderRadius: '4px', background: a.maxSit >= 4 ? '#7f1d1d' : '#78350f', color: a.maxSit >= 4 ? '#fca5a5' : '#fde68a', fontWeight: 'bold' }}>
+                          Sit {a.maxSit}
+                        </span>
+                        {a.chequesRechazados > 0 && (
+                          <span style={{ color: '#ef4444', fontWeight: 'bold' }}>
+                            ⚠️ {a.chequesRechazados} cheque(s)
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
 
             <FormCliente 
               editingId={editingId}
