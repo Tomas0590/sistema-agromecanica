@@ -5,12 +5,15 @@ export default function FormProducto({
   sku, setSku,
   descripcion, setDescripcion,
   categoria, setCategoria,
+  subcategoria, setSubcategoria,
   marca, setMarca,
   ubicacion, setUbicacion,
   precioCosto, setPrecioCosto,
   precioVenta, setPrecioVenta,
   stockActual, setStockActual,
   stockMinimo, setStockMinimo,
+  categoriasExistentes = [],
+  subcategoriasExistentes = [],
   mensajeProducto,
   onGuardar,
   onCancelar
@@ -40,7 +43,7 @@ export default function FormProducto({
           border: '1px solid #334155',
           borderRadius: '12px',
           width: '100%',
-          maxWidth: '600px',
+          maxWidth: '650px',
           padding: '1.75rem',
           color: '#f8fafc',
           boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.5)'
@@ -91,17 +94,42 @@ export default function FormProducto({
             </div>
           </div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '0.75rem', marginBottom: '1rem' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem', marginBottom: '1rem' }}>
             <div>
               <label style={{ display: 'block', fontSize: '0.85rem', color: '#cbd5e1', marginBottom: '0.35rem' }}>Categoría / Rubro</label>
               <input
+                list="lista-categorias"
                 type="text"
                 placeholder="Ej: Filtros"
                 value={categoria}
                 onChange={(e) => setCategoria(e.target.value)}
                 style={{ width: '100%', padding: '0.6rem 0.8rem', borderRadius: '6px', border: '1px solid #475569', background: '#0f172a', color: '#fff', fontSize: '0.9rem', outline: 'none', boxSizing: 'border-box' }}
               />
+              <datalist id="lista-categorias">
+                {categoriasExistentes.map((cat, i) => (
+                  <option key={i} value={cat} />
+                ))}
+              </datalist>
             </div>
+            <div>
+              <label style={{ display: 'block', fontSize: '0.85rem', color: '#cbd5e1', marginBottom: '0.35rem' }}>Subcategoría</label>
+              <input
+                list="lista-subcategorias"
+                type="text"
+                placeholder="Ej: Aceite, Aire, Combustible..."
+                value={subcategoria}
+                onChange={(e) => setSubcategoria(e.target.value)}
+                style={{ width: '100%', padding: '0.6rem 0.8rem', borderRadius: '6px', border: '1px solid #475569', background: '#0f172a', color: '#fff', fontSize: '0.9rem', outline: 'none', boxSizing: 'border-box' }}
+              />
+              <datalist id="lista-subcategorias">
+                {subcategoriasExistentes.map((sub, i) => (
+                  <option key={i} value={sub} />
+                ))}
+              </datalist>
+            </div>
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem', marginBottom: '1rem' }}>
             <div>
               <label style={{ display: 'block', fontSize: '0.85rem', color: '#cbd5e1', marginBottom: '0.35rem' }}>Marca</label>
               <input
