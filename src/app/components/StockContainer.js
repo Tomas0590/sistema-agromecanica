@@ -50,7 +50,7 @@ export default function StockContainer({ supabase }) {
     if (!error) cargarCategorias();
   };
 
-  // Extraer las listas para pasarlas a los inputs con datalist
+  // Listas desplegables dinamicas
   const categoriasExistentes = Array.from(
     new Set([
       ...categoriasLista.filter((c) => !c.padre).map((c) => c.nombre),
@@ -147,20 +147,28 @@ export default function StockContainer({ supabase }) {
 
   return (
     <div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem', flexWrap: 'wrap', gap: '1rem' }}>
-        <h2 style={{ color: '#cbd5e1', margin: 0 }}>Catálogo de Inventario y Stock</h2>
-        
+      {/* ENCABEZADO RESALTADO EN TONO OSCURO */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem', flexWrap: 'wrap', gap: '1rem' }}>
+        <div>
+          <h2 style={{ color: '#2b2927', margin: 0, fontSize: '1.35rem', fontWeight: '800' }}>
+            Catálogo de Inventario y Stock
+          </h2>
+          <span style={{ fontSize: '0.85rem', color: '#78716c' }}>
+            Control de repuestos, precios y niveles de stock
+          </span>
+        </div>
+
         <div style={{ display: 'flex', gap: '0.5rem' }}>
           <button 
             onClick={() => setMostrarModalCategorias(true)}
-            style={{ background: '#334155', color: '#f59e0b', border: '1px solid #475569', padding: '0.5rem 1rem', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold', fontSize: '0.85rem' }}
+            style={{ background: '#ebe6dc', color: '#44403c', border: '1px solid #dcd5c9', padding: '0.55rem 1rem', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold', fontSize: '0.85rem' }}
           >
             ⚙️ Gestionar Rubros
           </button>
-          
+
           <button 
             onClick={abrirNuevoProducto}
-            style={{ background: '#16a34a', color: '#fff', border: 'none', padding: '0.5rem 1rem', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold', fontSize: '0.85rem' }}
+            style={{ background: '#15803d', color: '#fff', border: 'none', padding: '0.55rem 1rem', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold', fontSize: '0.85rem' }}
           >
             ➕ Nuevo Producto
           </button>
