@@ -5,12 +5,17 @@ import { createClient } from '@supabase/supabase-js';
 import ClientesContainer from './components/ClientesContainer';
 import StockContainer from './components/StockContainer';
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-const supabase = createClient(supabaseUrl, supabaseAnonKey);
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
+const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
+
+// Crear el cliente validando la URL
+const supabase = createClient(
+  supabaseUrl.trim(),
+  supabaseAnonKey.trim()
+);
 
 export default function Home() {
-  const [activeTab, setActiveTab] = useState('stock');
+  const [activeTab, setActiveTab] = useState('clientes');
 
   return (
     <main style={{ minHeight: '100vh', backgroundColor: '#f5f2eb', color: '#2b2927', fontFamily: 'system-ui, sans-serif' }}>
