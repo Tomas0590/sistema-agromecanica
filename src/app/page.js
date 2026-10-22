@@ -7,6 +7,8 @@ import Navbar from './components/Navbar';
 import FormCliente from './components/FormCliente';
 import TablaClientes from './components/TablaClientes';
 import ModalCliente from './components/ModalCliente';
+import FormProducto from './components/FormProducto';
+import TablaStock from './components/TablaStock';
 
 const SUPABASE_URL = 'https://tqfpcogdvhtvvhdqewdg.supabase.co';
 const SUPABASE_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'sb_publishable_MchMROFkf12BgkCahzrC5w_qAlaGXKr';
@@ -41,6 +43,21 @@ export default function Home() {
   const [consultandoMasivo, setConsultandoMasivo] = useState(false);
   const [alertaBcra, setAlertaBcra] = useState([]);
 
+  // ESTADOS PRODUCTOS / STOCK
+  const [productos, setProductos] = useState([]);
+  const [editingProductoId, setEditingProductoId] = useState(null);
+  const [sku, setSku] = useState('');
+  const [descripcion, setDescripcion] = useState('');
+  const [categoria, setCategoria] = useState('');
+  const [marca, setMarca] = useState('');
+  const [ubicacion, setUbicacion] = useState('');
+  const [precioCosto, setPrecioCosto] = useState(0);
+  const [precioVenta, setPrecioVenta] = useState(0);
+  const [stockActual, setStockActual] = useState(0);
+  const [stockMinimo, setStockMinimo] = useState(0);
+  const [mostrarModalProducto, setMostrarModalProducto] = useState(false);
+  const [mensajeProducto, setMensajeProducto] = useState('');
+
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => setSession(session));
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => setSession(session));
@@ -48,12 +65,20 @@ export default function Home() {
   }, []);
 
   useEffect(() => {
-    if (session) cargarClientes();
+    if (session) {
+      cargarClientes();
+      cargarProductos();
+    }
   }, [session]);
 
   const cargarClientes = async () => {
     const { data, error } = await supabase.from('clientes').select('*').order('created_at', { ascending: false });
     if (!error && data) setClientes(data);
+  };
+
+  const cargarProductos = async () => {
+    const { data, error } = await supabase.from('productos').select('*').order('created_at', { ascending: false });
+    if (!error && data) setProductos(data);
   };
 
   const handleLogin = async (e) => {
@@ -68,6 +93,7 @@ export default function Home() {
 
   const handleLogout = async () => await supabase.auth.signOut();
 
+  // FUNCIONES CLIENTES
   const abrirNuevoCliente = () => {
     setEditingId(null);
     setCuit('');
@@ -346,6 +372,81 @@ export default function Home() {
     }
   };
 
+  // FUNCIONES PRODUCTOS / STOCK
+  const abrirNuevoProducto = () => {
+    setEditingProductoId(null);
+    setSku('');
+    setDescripcion('');
+    setCategoria('');
+    setMarca('');
+    setUbicacion('');
+    setPrecioCosto(0);
+    setPrecioVenta(0);
+    setStockActual(0);
+    setStockMinimo(0);
+    setMensajeProducto('');
+    setMostrarModalProducto(true);
+  };
+
+  const prepararEdicionProducto = (p) => {
+    setEditingProductoId(p.id);
+    setSku(p.sku || '');
+    setDescripcion(p.descripcion || '');
+    setCategoria(p.categoria || '');
+    setMarca(p.marca || '');
+    setUbicacion(p.ubicacion || '');
+    setPrecioCosto(p.precio_costo || 0);
+    setPrecioVenta(p.precio_venta || 0);
+    setStockActual(p.stock_actual || 0);
+    setStockMinimo(p.stock_minimo || 0);
+    setMensajeProducto('');
+    setMostrarModalProducto(true);
+  };
+
+  const cancelarProducto = () => {
+    setMostrarModalProducto(false);
+    setEditingProductoId(null);
+  };
+
+  const guardarProducto = async (e) => {
+    e.preventDefault();
+    setMensajeProducto('');
+
+    const payload = {
+      sku,
+      descripcion,
+      categoria,
+      marca,
+      ubicacion,
+      precio_costo: parseFloat(precioCosto) || 0,
+      precio_venta: parseFloat(precioVenta) || 0,
+      stock_actual: parseInt(stockActual) || 0,
+      stock_minimo: parseInt(stockMinimo) || 0,
+    };
+
+    let resultError = null;
+    if (editingProductoId) {
+      const { error } = await supabase.from('productos').update(payload).eq('id', editingProductoId);
+      resultError = error;
+    } else {
+      const { error } = await supabase.from('productos').insert([payload]);
+      resultError = error;
+    }
+
+    if (resultError) {
+      setMensajeProducto(`Error al guardar: ${resultError.message}`);
+    } else {
+      cancelarProducto();
+      cargarProductos();
+    }
+  };
+
+  const borrarProducto = async (id) => {
+    if (!confirm('¿Estás seguro de eliminar este producto del inventario?')) return;
+    const { error } = await supabase.from('productos').delete().eq('id', id);
+    if (!error) cargarProductos();
+  };
+
   if (!session) {
     return (
       <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '100vh', backgroundColor: '#0f172a', fontFamily: 'sans-serif' }}>
@@ -400,12 +501,39 @@ export default function Home() {
         {/* PESTAÑA STOCK / INVENTARIO */}
         {activeTab === 'stock' && (
           <div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem', flexWrap: 'wrap', gap: '1rem' }}>
               <h2 style={{ color: '#cbd5e1', margin: 0 }}>Catálogo de Inventario y Stock</h2>
+              <button 
+                onClick={abrirNuevoProducto}
+                style={{ background: '#16a34a', color: '#fff', border: 'none', padding: '0.5rem 1rem', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold', fontSize: '0.85rem' }}
+              >
+                ➕ Nuevo Producto
+              </button>
             </div>
-            <div style={{ background: '#1e293b', padding: '2rem', borderRadius: '8px', border: '1px solid #334155', textAlign: 'center' }}>
-              <p style={{ color: '#94a3b8', fontSize: '1.1rem' }}>Módulo de Inventario aislado listo para conectar los componentes de productos.</p>
-            </div>
+
+            {mostrarModalProducto && (
+              <FormProducto 
+                editingId={editingProductoId}
+                sku={sku} setSku={setSku}
+                descripcion={descripcion} setDescripcion={setDescripcion}
+                categoria={categoria} setCategoria={setCategoria}
+                marca={marca} setMarca={setMarca}
+                ubicacion={ubicacion} setUbicacion={setUbicacion}
+                precioCosto={precioCosto} setPrecioCosto={setPrecioCosto}
+                precioVenta={precioVenta} setPrecioVenta={setPrecioVenta}
+                stockActual={stockActual} setStockActual={setStockActual}
+                stockMinimo={stockMinimo} setStockMinimo={setStockMinimo}
+                mensajeProducto={mensajeProducto}
+                onGuardar={guardarProducto}
+                onCancelar={cancelarProducto}
+              />
+            )}
+
+            <TablaStock 
+              productos={productos} 
+              onPrepararEdicion={prepararEdicionProducto} 
+              onBorrarProducto={borrarProducto} 
+            />
           </div>
         )}
 
