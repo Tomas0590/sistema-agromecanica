@@ -8,8 +8,10 @@ export default function ClientesContainer({ supabase }) {
   const [ordenColumna, setOrdenColumna] = useState('razon_social');
   const [ordenAsc, setOrdenAsc] = useState(true);
 
-  // Estados de procesos masivos
+  // Estados de procesos masivos e individuales
   const [cargandoBCRA, setCargandoBCRA] = useState(false);
+  const [progresoBcra, setProgresoBcra] = useState('');
+  const [cargandoIndividualId, setCargandoIndividualId] = useState(null);
   const [cargandoNombres, setCargandoNombres] = useState(false);
   const [buscandoCuitApi, setBuscandoCuitApi] = useState(false);
 
@@ -49,7 +51,133 @@ export default function ClientesContainer({ supabase }) {
     }
   };
 
-  // AUTOCOMPLETAR RAZÓN SOCIAL AL INGRESAR CUIT (11 DÍGITOS) EN NUEVO CLIENTE
+  // FUNCIÓN AUXILIAR CONSULTA BCRA POR CUIT
+  const consultarBCRACuit = async (cuitLimpio) => {
+    const targetUrl = `https://api.bcra.gob.ar/centraldedeudores/v1.0/Deudas/${cuitLimpio}`;
+    let res = null;
+    let exitoFetch = false;
+
+    // Intento 1: AllOrigins raw
+    try {
+      res = await fetch(`https://api.allorigins.win/raw?url=${encodeURIComponent(targetUrl)}`);
+      if (res.status === 200 || res.status === 404) exitoFetch = true;
+    } catch (e) {
+      exitoFetch = false;
+    }
+
+    // Intento 2: CorsProxy
+    if (!exitoFetch) {
+      try {
+        res = await fetch(`https://corsproxy.io/?${encodeURIComponent(targetUrl)}`);
+        if (res.status === 200 || res.status === 404) exitoFetch = true;
+      } catch (e) {
+        exitoFetch = false;
+      }
+    }
+
+    if (exitoFetch && res) {
+      let peorSituacion = 1;
+
+      if (res.status === 404) {
+        peorSituacion = 1;
+      } else if (res.ok) {
+        try {
+          const data = await res.json();
+          if (data.results && data.results.periodos && data.results.periodos.length > 0) {
+            const deudas = data.results.periodos[0].entidades || [];
+            deudas.forEach((e) => {
+              if (e.situacion > peorSituacion) peorSituacion = e.situacion;
+            });
+          }
+        } catch (errJson) {
+          peorSituacion = 1;
+        }
+      }
+      return peorSituacion;
+    }
+    return null;
+  };
+
+  // CONSULTA BCRA INDIVIDUAL PARA UN SOLO CLIENTE
+  const corroborarBCRAIndividual = async (cliente, e) => {
+    if (e) e.stopPropagation();
+
+    const cuitLimpio = String(cliente.cuit_dni || cliente.cuit || '').replace(/\D/g, '');
+    if (cuitLimpio.length !== 11) {
+      alert('Este cliente no posee un CUIT válido de 11 dígitos.');
+      return;
+    }
+
+    setCargandoIndividualId(cliente.id);
+    const nuevaSit = await consultarBCRACuit(cuitLimpio);
+
+    if (nuevaSit !== null) {
+      const { error } = await supabase
+        .from('clientes')
+        .update({ situacion_bcra: nuevaSit })
+        .eq('id', cliente.id);
+
+      if (!error) {
+        setClientes((prev) =>
+          prev.map((item) => (item.id === cliente.id ? { ...item, situacion_bcra: nuevaSit } : item))
+        );
+        if (clienteDetalle?.id === cliente.id) {
+          setClienteDetalle((prev) => ({ ...prev, situacion_bcra: nuevaSit }));
+        }
+      } else {
+        alert(`Error al guardar en Supabase: ${error.message}`);
+      }
+    } else {
+      alert('No se pudo conectar con el servidor del BCRA en este momento.');
+    }
+
+    setCargandoIndividualId(null);
+  };
+
+  // BOTÓN MASIVO: EVALUACIÓN BCRA CON PROGRESO EN VIVO
+  const corroborarBCRAMasivamente = async () => {
+    setCargandoBCRA(true);
+    setProgresoBcra('(0/0)');
+
+    const conCuit = clientes.filter((c) => {
+      const val = String(c.cuit_dni || c.cuit || '').replace(/\D/g, '');
+      return val.length === 11;
+    });
+
+    if (conCuit.length === 0) {
+      alert('No se encontraron clientes con CUIT válido de 11 dígitos.');
+      setCargandoBCRA(false);
+      setProgresoBcra('');
+      return;
+    }
+
+    let evaluados = 0;
+    let errores = 0;
+
+    for (let i = 0; i < conCuit.length; i++) {
+      const cli = conCuit[i];
+      setProgresoBcra(`(${i + 1}/${conCuit.length})`);
+
+      const cuitLimpio = String(cli.cuit_dni || cli.cuit).replace(/\D/g, '');
+      const nuevaSit = await consultarBCRACuit(cuitLimpio);
+
+      if (nuevaSit !== null) {
+        await supabase.from('clientes').update({ situacion_bcra: nuevaSit }).eq('id', cli.id);
+        evaluados++;
+      } else {
+        errores++;
+      }
+
+      await new Promise((r) => setTimeout(r, 120));
+    }
+
+    setCargandoBCRA(false);
+    setProgresoBcra('');
+    alert(`Evaluación BCRA finalizada.\n✅ Procesados con éxito: ${evaluados}\n⚠️ No consultados: ${errores}`);
+    cargarClientes();
+  };
+
+  // AUTOCOMPLETAR RAZÓN SOCIAL AL INGRESAR CUIT EN NUEVO CLIENTE
   const buscarCuitEnPadron = async (cuitIngresado) => {
     const cuitLimpio = cuitIngresado.replace(/\D/g, '');
     if (cuitLimpio.length !== 11) return;
@@ -125,82 +253,6 @@ export default function ClientesContainer({ supabase }) {
     cargarClientes();
   };
 
-  // BOTÓN MASIVO: EVALUACIÓN BCRA
-  const corroborarBCRAMasivamente = async () => {
-    setCargandoBCRA(true);
-    
-    const conCuit = clientes.filter((c) => {
-      const val = String(c.cuit_dni || c.cuit || '').replace(/\D/g, '');
-      return val.length === 11;
-    });
-
-    if (conCuit.length === 0) {
-      alert('No se encontraron clientes con CUIT válido de 11 dígitos.');
-      setCargandoBCRA(false);
-      return;
-    }
-
-    let evaluados = 0;
-    let errores = 0;
-
-    for (const cli of conCuit) {
-      const cuitLimpio = String(cli.cuit_dni || cli.cuit).replace(/\D/g, '');
-      const targetUrl = `https://api.bcra.gob.ar/centraldedeudores/v1.0/Deudas/${cuitLimpio}`;
-      
-      let res = null;
-      let exitoFetch = false;
-
-      // Intento 1: AllOrigins raw
-      try {
-        res = await fetch(`https://api.allorigins.win/raw?url=${encodeURIComponent(targetUrl)}`);
-        if (res.status === 200 || res.status === 404) exitoFetch = true;
-      } catch (e) {
-        exitoFetch = false;
-      }
-
-      // Intento 2: CorsProxy
-      if (!exitoFetch) {
-        try {
-          res = await fetch(`https://corsproxy.io/?${encodeURIComponent(targetUrl)}`);
-          if (res.status === 200 || res.status === 404) exitoFetch = true;
-        } catch (e) {
-          exitoFetch = false;
-        }
-      }
-
-      if (exitoFetch && res) {
-        let peorSituacion = 1;
-
-        if (res.status === 404) {
-          peorSituacion = 1;
-        } else if (res.ok) {
-          try {
-            const data = await res.json();
-            if (data.results && data.results.periodos && data.results.periodos.length > 0) {
-              const deudas = data.results.periodos[0].entidades || [];
-              deudas.forEach((e) => {
-                if (e.situacion > peorSituacion) peorSituacion = e.situacion;
-              });
-            }
-          } catch (errJson) {
-            peorSituacion = 1;
-          }
-        }
-
-        await supabase.from('clientes').update({ situacion_bcra: peorSituacion }).eq('id', cli.id);
-        evaluados++;
-      } else {
-        errores++;
-      }
-
-      await new Promise((r) => setTimeout(r, 120));
-    }
-
-    setCargandoBCRA(false);
-    alert(`Evaluación BCRA finalizada.\n✅ Procesados: ${evaluados}\n⚠️ No consultados: ${errores}`);
-    cargarClientes();
-  };
-
   const guardarNuevoCliente = async (e) => {
     e.preventDefault();
     setMensajeForm('');
@@ -237,7 +289,6 @@ export default function ClientesContainer({ supabase }) {
     }
   };
 
-  // GUARDAR CAMBIOS DE EDICIÓN DE CLIENTE
   const guardarCambiosCliente = async (e) => {
     e.preventDefault();
     if (!clienteDetalle) return;
@@ -336,7 +387,7 @@ export default function ClientesContainer({ supabase }) {
             disabled={cargandoBCRA}
             style={{ background: '#d97706', color: '#fff', border: 'none', padding: '0.55rem 0.9rem', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold', fontSize: '0.8rem', opacity: cargandoBCRA ? 0.7 : 1 }}
           >
-            {cargandoBCRA ? '⏳ Consultando BCRA...' : '🔍 Corroborar BCRA Masivamente'}
+            {cargandoBCRA ? `⏳ Consultando ${progresoBcra}...` : '🔍 Corroborar BCRA Masivamente'}
           </button>
 
           <button 
@@ -390,6 +441,7 @@ export default function ClientesContainer({ supabase }) {
                   const valorCuit = String(c.cuit_dni || c.cuit || '');
                   const sitBcra = c.situacion_bcra || 1;
                   const cuitLimpio = valorCuit.replace(/\D/g, '');
+                  const estaCargandoInd = cargandoIndividualId === c.id;
 
                   return (
                     <tr 
@@ -408,34 +460,57 @@ export default function ClientesContainer({ supabase }) {
                         {valorCuit || '-'}
                       </td>
                       
-                      {/* SITUACIÓN BCRA - LINK A LA MACRO */}
+                      {/* SITUACIÓN BCRA (BADGE A LA MACRO + BOTÓN INDIVIDUAL 🔄) */}
                       <td style={{ padding: '0.75rem 1rem', textAlign: 'center' }}>
-                        <button
-                          onClick={() => {
-                            if (cuitLimpio) {
-                              window.open(`https://www.lamacro.ar/central-de-deudores/${cuitLimpio}`, '_blank');
-                            } else {
-                              alert('Este cliente no posee CUIT registrado.');
-                            }
-                          }}
-                          style={{
-                            padding: '0.3rem 0.75rem',
-                            borderRadius: '9999px',
-                            fontSize: '0.75rem',
-                            fontWeight: 'bold',
-                            cursor: 'pointer',
-                            border: 'none',
-                            backgroundColor: sitBcra === 1 ? '#f0fdf4' : sitBcra <= 2 ? '#fefce8' : '#fef2f2',
-                            color: sitBcra === 1 ? '#166534' : sitBcra <= 2 ? '#ca8a04' : '#dc2626',
-                            outline: `1px solid ${sitBcra === 1 ? '#bbf7d0' : sitBcra <= 2 ? '#fef08a' : '#fecaca'}`
-                          }}
-                          title="Abrir informe en La Macro"
-                        >
-                          {sitBcra === 1 ? `Sit. 1 ✅` : `Sit. ${sitBcra} ⚠️ ALERTA`}
-                        </button>
+                        <div style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem' }}>
+                          <button
+                            onClick={() => {
+                              if (cuitLimpio) {
+                                window.open(`https://www.lamacro.ar/central-de-deudores/${cuitLimpio}`, '_blank');
+                              } else {
+                                alert('Este cliente no posee CUIT registrado.');
+                              }
+                            }}
+                            style={{
+                              padding: '0.3rem 0.75rem',
+                              borderRadius: '9999px',
+                              fontSize: '0.75rem',
+                              fontWeight: 'bold',
+                              cursor: 'pointer',
+                              border: 'none',
+                              backgroundColor: sitBcra === 1 ? '#f0fdf4' : sitBcra <= 2 ? '#fefce8' : '#fef2f2',
+                              color: sitBcra === 1 ? '#166534' : sitBcra <= 2 ? '#ca8a04' : '#dc2626',
+                              outline: `1px solid ${sitBcra === 1 ? '#bbf7d0' : sitBcra <= 2 ? '#fef08a' : '#fecaca'}`
+                            }}
+                            title="Abrir informe en La Macro"
+                          >
+                            {sitBcra === 1 ? `Sit. 1 ✅` : `Sit. ${sitBcra} ⚠️ ALERTA`}
+                          </button>
+
+                          <button
+                            onClick={(e) => corroborarBCRAIndividual(c, e)}
+                            disabled={estaCargandoInd || !cuitLimpio}
+                            style={{
+                              backgroundColor: '#eeeae1',
+                              border: '1px solid #dcd5c9',
+                              borderRadius: '50%',
+                              width: '26px',
+                              height: '26px',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              cursor: cuitLimpio ? 'pointer' : 'not-allowed',
+                              fontSize: '0.75rem',
+                              opacity: cuitLimpio ? 1 : 0.4
+                            }}
+                            title="Consultar BCRA solo para este cliente"
+                          >
+                            {estaCargandoInd ? '⏳' : '🔄'}
+                          </button>
+                        </div>
                       </td>
 
-                      {/* ACCIÓN: EDITAR DETALLE */}
+                      {/* EDITAR */}
                       <td style={{ padding: '0.75rem 1rem', textAlign: 'center' }}>
                         <button
                           onClick={() => setClienteDetalle({ ...c })}
@@ -454,7 +529,7 @@ export default function ClientesContainer({ supabase }) {
         </div>
       </div>
 
-      {/* MODAL DETALLE / EDITAR CLIENTE */}
+      {/* MODAL EDITAR CLIENTE */}
       {clienteDetalle && (
         <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.45)', backdropFilter: 'blur(3px)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}>
           <div style={{ background: '#fcfbf9', border: '1px solid #e5e0d8', borderRadius: '14px', width: '100%', maxWidth: '580px', padding: '1.75rem', color: '#2b2927', boxShadow: '0 12px 30px rgba(0,0,0,0.12)' }}>
@@ -474,7 +549,6 @@ export default function ClientesContainer({ supabase }) {
               </button>
             </div>
 
-            {/* FORMULARIO DE EDICIÓN */}
             <form onSubmit={guardarCambiosCliente} style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem' }}>
               
               <div>
@@ -546,8 +620,26 @@ export default function ClientesContainer({ supabase }) {
                 />
               </div>
 
-              {/* ENLACE LA MACRO */}
-              <div style={{ marginTop: '0.5rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              {/* BARRA DE ESTADO BCRA E INDIVIDUAL DENTRO DEL MODAL */}
+              <div style={{ backgroundColor: '#f5f2eb', padding: '0.75rem', borderRadius: '8px', border: '1px solid #e5e0d8', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div>
+                  <span style={{ display: 'block', fontSize: '0.75rem', color: '#78716c', fontWeight: '700' }}>SITUACIÓN BCRA ACTUAL</span>
+                  <span style={{ fontSize: '0.85rem', color: '#57534e' }}>
+                    Sit. {clienteDetalle.situacion_bcra || 1} {(clienteDetalle.situacion_bcra || 1) > 1 ? '⚠️' : '✅'}
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={(e) => corroborarBCRAIndividual(clienteDetalle, e)}
+                  disabled={cargandoIndividualId === clienteDetalle.id}
+                  style={{ background: '#d97706', color: '#fff', border: 'none', padding: '0.4rem 0.75rem', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold', fontSize: '0.75rem' }}
+                >
+                  {cargandoIndividualId === clienteDetalle.id ? '⏳ Consultando...' : '🔄 Reevaluar BCRA Ahora'}
+                </button>
+              </div>
+
+              {/* ENLACE Y ELIMINAR */}
+              <div style={{ marginTop: '0.25rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 {(clienteDetalle.cuit_dni || clienteDetalle.cuit) ? (
                   <a
                     href={`https://www.lamacro.ar/central-de-deudores/${String(clienteDetalle.cuit_dni || clienteDetalle.cuit).replace(/\D/g, '')}`}
@@ -569,7 +661,7 @@ export default function ClientesContainer({ supabase }) {
               </div>
 
               {/* BOTONES ACCIÓN */}
-              <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end', marginTop: '1rem', borderTop: '1px solid #eeeae1', paddingTop: '1rem' }}>
+              <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end', marginTop: '0.75rem', borderTop: '1px solid #eeeae1', paddingTop: '1rem' }}>
                 <button type="button" onClick={() => setClienteDetalle(null)} style={{ padding: '0.55rem 1.1rem', borderRadius: '6px', border: '1px solid #dcd5c9', background: '#eeeae1', cursor: 'pointer', fontWeight: 'bold' }}>
                   Cancelar
                 </button>
