@@ -124,7 +124,7 @@ export default function ClientesContainer({ supabase }) {
     cargarClientes();
   };
 
-  // BOTÓN MASIVO: EVALUACIÓN BCRA (CON PROXY PARA CORTAR EL BLOQUEO CORS)
+  // BOTÓN MASIVO: EVALUACIÓN BCRA (CORREGIDO MANEJO DE STATUS 404 COMO SIT. 1)
   const corroborarBCRAMasivamente = async () => {
     setCargandoBCRA(true);
     const conCuit = clientes.filter((c) => {
@@ -145,9 +145,15 @@ export default function ClientesContainer({ supabase }) {
         const urlBcra = `https://api.bcra.gob.ar/centraldedeudores/v1.0/Deudas/${cuitLimpio}`;
         const res = await fetch(`https://corsproxy.io/?${encodeURIComponent(urlBcra)}`);
 
-        if (res.ok) {
+        let peorSituacion = 1;
+
+        if (res.status === 404) {
+          // El BCRA devuelve 404 si el CUIT no tiene deudas en el sistema -> Situación 1 (Normal)
+          peorSituacion = 1;
+          await supabase.from('clientes').update({ situacion_bcra: 1 }).eq('id', cli.id);
+          evaluados++;
+        } else if (res.ok) {
           const data = await res.json();
-          let peorSituacion = 1;
           if (data.results && data.results.periodos && data.results.periodos.length > 0) {
             const deudas = data.results.periodos[0].entidades || [];
             deudas.forEach((e) => {
@@ -157,6 +163,9 @@ export default function ClientesContainer({ supabase }) {
           await supabase.from('clientes').update({ situacion_bcra: peorSituacion }).eq('id', cli.id);
           evaluados++;
         }
+
+        // Pequeña pausa de 150ms para no saturar las consultas
+        await new Promise((r) => setTimeout(r, 150));
       } catch (e) {
         console.error(`Error consultando BCRA CUIT ${cuitLimpio}:`, e);
       }
@@ -300,7 +309,7 @@ export default function ClientesContainer({ supabase }) {
           </span>
         </div>
 
-        {/* TABLA DE CLIENTES */}
+        {/* TABLA DE CLIENTES (4 COLUMNAS) */}
         <div style={{ overflowX: 'auto' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '0.875rem' }}>
             <thead>
@@ -309,15 +318,14 @@ export default function ClientesContainer({ supabase }) {
                   Razón Social {ordenColumna === 'razon_social' ? (ordenAsc ? '▲' : '▼') : '⇅'}
                 </th>
                 <th style={{ padding: '0.75rem 1rem' }}>CUIT / DNI</th>
-                <th style={{ padding: '0.75rem 1rem', textAlign: 'center' }}>Sit. BCRA</th>
-                <th style={{ padding: '0.75rem 1rem', textAlign: 'center' }}>Consulta La Macro</th>
+                <th style={{ padding: '0.75rem 1rem', textAlign: 'center' }}>Sit. BCRA (Click p/ La Macro)</th>
                 <th style={{ padding: '0.75rem 1rem', textAlign: 'center' }}>Acción</th>
               </tr>
             </thead>
             <tbody>
               {clientesFiltrados.length === 0 ? (
                 <tr>
-                  <td colSpan="5" style={{ textAlign: 'center', padding: '2.5rem', color: '#a8a29e' }}>
+                  <td colSpan="4" style={{ textAlign: 'center', padding: '2.5rem', color: '#a8a29e' }}>
                     No se encontraron clientes en el sistema.
                   </td>
                 </tr>
@@ -341,31 +349,35 @@ export default function ClientesContainer({ supabase }) {
                       <td style={{ padding: '0.75rem 1rem', color: '#44403c', fontFamily: 'monospace' }}>
                         {valorCuit || '-'}
                       </td>
-                      <td style={{ padding: '0.75rem 1rem', textAlign: 'center' }}>
-                        <span style={{
-                          padding: '0.2rem 0.55rem',
-                          borderRadius: '9999px',
-                          fontSize: '0.75rem',
-                          fontWeight: 'bold',
-                          backgroundColor: sitBcra === 1 ? '#f0fdf4' : sitBcra <= 2 ? '#fefce8' : '#fef2f2',
-                          color: sitBcra === 1 ? '#166534' : sitBcra <= 2 ? '#ca8a04' : '#dc2626',
-                          border: `1px solid ${sitBcra === 1 ? '#bbf7d0' : sitBcra <= 2 ? '#fef08a' : '#fecaca'}`
-                        }}>
-                          Sit. {sitBcra} {sitBcra > 1 ? '⚠️' : '✅'}
-                        </span>
-                      </td>
+                      
+                      {/* BOTÓN SITUACIÓN BCRA CON ENLACE DIRECTO A LA MACRO */}
                       <td style={{ padding: '0.75rem 1rem', textAlign: 'center' }} onClick={(e) => e.stopPropagation()}>
-                        {cuitLimpio ? (
-                          <a
-                            href={`https://www.lamacro.ar/central-de-deudores/${cuitLimpio}`}
-                            target="_blank"
-                            rel="noreferrer"
-                            style={{ color: '#0284c7', textDecoration: 'none', fontWeight: 'bold', fontSize: '0.8rem' }}
-                          >
-                            🔗 Ver La Macro
-                          </a>
-                        ) : '-'}
+                        <button
+                          onClick={() => {
+                            if (cuitLimpio) {
+                              window.open(`https://www.lamacro.ar/central-de-deudores/${cuitLimpio}`, '_blank');
+                            } else {
+                              alert('Este cliente no posee CUIT registrado.');
+                            }
+                          }}
+                          style={{
+                            padding: '0.3rem 0.75rem',
+                            borderRadius: '9999px',
+                            fontSize: '0.75rem',
+                            fontWeight: 'bold',
+                            cursor: 'pointer',
+                            border: 'none',
+                            backgroundColor: sitBcra === 1 ? '#f0fdf4' : sitBcra <= 2 ? '#fefce8' : '#fef2f2',
+                            color: sitBcra === 1 ? '#166534' : sitBcra <= 2 ? '#ca8a04' : '#dc2626',
+                            outline: `1px solid ${sitBcra === 1 ? '#bbf7d0' : sitBcra <= 2 ? '#fef08a' : '#fecaca'}`,
+                            boxShadow: sitBcra > 1 ? '0 0 6px rgba(220, 38, 38, 0.2)' : 'none'
+                          }}
+                          title="Clic para abrir padrón en La Macro"
+                        >
+                          {sitBcra === 1 ? `Sit. 1 ✅` : `Sit. ${sitBcra} ⚠️ ALERTA`}
+                        </button>
                       </td>
+
                       <td style={{ padding: '0.75rem 1rem', textAlign: 'center' }} onClick={(e) => e.stopPropagation()}>
                         <button
                           onClick={() => borrarCliente(c.id)}
@@ -456,7 +468,7 @@ export default function ClientesContainer({ supabase }) {
                   color: (clienteDetalle.situacion_bcra || 1) === 1 ? '#166534' : (clienteDetalle.situacion_bcra || 1) <= 2 ? '#ca8a04' : '#dc2626',
                   border: `1px solid ${(clienteDetalle.situacion_bcra || 1) === 1 ? '#bbf7d0' : (clienteDetalle.situacion_bcra || 1) <= 2 ? '#fef08a' : '#fecaca'}`
                 }}>
-                  Situación {clienteDetalle.situacion_bcra || 1} {(clienteDetalle.situacion_bcra || 1) > 1 ? '⚠️' : '✅'}
+                  Situación {clienteDetalle.situacion_bcra || 1} {(clienteDetalle.situacion_bcra || 1) > 1 ? '⚠️ ALERTA' : '✅'}
                 </span>
               </div>
 
