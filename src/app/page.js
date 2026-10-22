@@ -1,103 +1,87 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { createClient } from '@supabase/supabase-js';
-
-import Navbar from './components/Navbar';
 import ClientesContainer from './components/ClientesContainer';
 import StockContainer from './components/StockContainer';
 
-const SUPABASE_URL = 'https://tqfpcogdvhtvvhdqewdg.supabase.co';
-const SUPABASE_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'sb_publishable_MchMROFkf12BgkCahzrC5w_qAlaGXKr';
-const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
 export default function Home() {
-  const [session, setSession] = useState(null);
-  const [usernameAuth, setUsernameAuth] = useState('');
-  const [passwordAuth, setPasswordAuth] = useState('');
-  const [errorAuth, setErrorAuth] = useState('');
-
-  const [activeTab, setActiveTab] = useState('clientes');
-
-  useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => setSession(session));
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => setSession(session));
-    return () => subscription.unsubscribe();
-  }, []);
-
-  const handleLogin = async (e) => {
-    e.preventDefault();
-    setErrorAuth('');
-    const cleanUser = usernameAuth.trim().toLowerCase();
-    const emailToUse = cleanUser.includes('@') ? cleanUser : `${cleanUser}@agromecanica.com`;
-
-    const { error } = await supabase.auth.signInWithPassword({ email: emailToUse, password: passwordAuth });
-    if (error) setErrorAuth('Usuario o contraseña incorrectos');
-  };
-
-  const handleLogout = async () => await supabase.auth.signOut();
-
-  if (!session) {
-    return (
-      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '100vh', backgroundColor: '#0f172a', fontFamily: 'sans-serif' }}>
-        <form onSubmit={handleLogin} style={{ background: '#1e293b', padding: '2.5rem', borderRadius: '12px', color: '#fff', width: '340px', boxShadow: '0 10px 25px rgba(0,0,0,0.5)' }}>
-          <h2 style={{ marginBottom: '0.25rem', textAlign: 'center', color: '#f59e0b', fontSize: '1.5rem' }}>Agromecanica</h2>
-          <p style={{ marginBottom: '1.5rem', textAlign: 'center', fontSize: '0.875rem', color: '#94a3b8' }}>Acceso al Sistema</p>
-          
-          {errorAuth && (
-            <div style={{ background: '#450a0a', border: '1px solid #ef4444', color: '#fca5a5', padding: '0.5rem', borderRadius: '6px', fontSize: '0.875rem', marginBottom: '1rem', textAlign: 'center' }}>
-              {errorAuth}
-            </div>
-          )}
-
-          <div style={{ marginBottom: '1.25rem' }}>
-            <label style={{ display: 'block', fontSize: '0.875rem', marginBottom: '0.5rem', color: '#cbd5e1' }}>Usuario</label>
-            <input 
-              type="text" 
-              placeholder="Ej: admin"
-              value={usernameAuth} 
-              onChange={(e) => setUsernameAuth(e.target.value)} 
-              required 
-              style={{ width: '100%', padding: '0.65rem', borderRadius: '6px', border: '1px solid #475569', background: '#0f172a', color: '#fff', outline: 'none', boxSizing: 'border-box' }}
-            />
-          </div>
-
-          <div style={{ marginBottom: '1.75rem' }}>
-            <label style={{ display: 'block', fontSize: '0.875rem', marginBottom: '0.5rem', color: '#cbd5e1' }}>Contraseña</label>
-            <input 
-              type="password" 
-              placeholder="••••••••"
-              value={passwordAuth} 
-              onChange={(e) => setPasswordAuth(e.target.value)} 
-              required 
-              style={{ width: '100%', padding: '0.65rem', borderRadius: '6px', border: '1px solid #475569', background: '#0f172a', color: '#fff', outline: 'none', boxSizing: 'border-box' }}
-            />
-          </div>
-
-          <button type="submit" style={{ width: '100%', padding: '0.75rem', background: '#f59e0b', border: 'none', borderRadius: '6px', color: '#0f172a', fontWeight: 'bold', fontSize: '1rem', cursor: 'pointer' }}>
-            Ingresar
-          </button>
-        </form>
-      </div>
-    );
-  }
+  const [activeTab, setActiveTab] = useState('stock');
 
   return (
-    <div style={{ minHeight: '100vh', backgroundColor: '#0f172a', color: '#f8fafc', fontFamily: 'sans-serif' }}>
-      <Navbar activeTab={activeTab} setActiveTab={setActiveTab} onLogout={handleLogout} />
-
-      <main style={{ padding: '2rem', maxWidth: '1200px', margin: '0 auto' }}>
-        {activeTab === 'stock' && <StockContainer supabase={supabase} />}
-        {activeTab === 'clientes' && <ClientesContainer supabase={supabase} />}
-        {activeTab === 'pedidos' && (
-          <div>
-            <h2 style={{ color: '#cbd5e1', marginBottom: '1.5rem' }}>Pedidos de Venta</h2>
-            <div style={{ background: '#1e293b', padding: '2rem', borderRadius: '8px', border: '1px solid #334155', textAlign: 'center' }}>
-              <p style={{ color: '#94a3b8', fontSize: '1.1rem' }}>Módulo de Pedidos en preparación.</p>
+    <main style={{ minHeight: '100vh', backgroundColor: '#f8fafc', color: '#1e293b', fontFamily: 'system-ui, sans-serif' }}>
+      {/* BARRA SUPERIOR / HEADER CON LOGO */}
+      <header style={{ backgroundColor: '#ffffff', borderBottom: '2px solid #e2e8f0', padding: '0.75rem 1.5rem', boxShadow: '0 1px 3px rgba(0,0,0,0.05)' }}>
+        <div style={{ maxWidth: '1200px', margin: '0 auto', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '1rem' }}>
+          
+          {/* LOGO E IDENTIDAD */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+            <img 
+              src="/logo.png" 
+              alt="Agromecánica de Ariel Raggi" 
+              style={{ height: '55px', objectFit: 'contain' }}
+            />
+            <div>
+              <h1 style={{ margin: 0, fontSize: '1.25rem', fontWeight: '800', color: '#dc2626', letterSpacing: '-0.02em' }}>
+                AGROMECÁNICA
+              </h1>
+              <span style={{ fontSize: '0.8rem', color: '#64748b', fontWeight: '600' }}>
+                Gestión Integral & Stock
+              </span>
             </div>
           </div>
-        )}
-      </main>
-    </div>
+
+          {/* NAVEGACIÓN ENTRE MÓDULOS */}
+          <nav style={{ display: 'flex', gap: '0.5rem', backgroundColor: '#f1f5f9', padding: '0.35rem', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+            <button
+              onClick={() => setActiveTab('stock')}
+              style={{
+                padding: '0.5rem 1.25rem',
+                borderRadius: '6px',
+                border: 'none',
+                fontWeight: '700',
+                fontSize: '0.875rem',
+                cursor: 'pointer',
+                transition: 'all 0.2s',
+                backgroundColor: activeTab === 'stock' ? '#15803d' : 'transparent',
+                color: activeTab === 'stock' ? '#ffffff' : '#64748b',
+                boxShadow: activeTab === 'stock' ? '0 2px 4px rgba(0,0,0,0.1)' : 'none'
+              }}
+            >
+              📦 Stock e Inventario
+            </button>
+
+            <button
+              onClick={() => setActiveTab('clientes')}
+              style={{
+                padding: '0.5rem 1.25rem',
+                borderRadius: '6px',
+                border: 'none',
+                fontWeight: '700',
+                fontSize: '0.875rem',
+                cursor: 'pointer',
+                transition: 'all 0.2s',
+                backgroundColor: activeTab === 'clientes' ? '#15803d' : 'transparent',
+                color: activeTab === 'clientes' ? '#ffffff' : '#64748b',
+                boxShadow: activeTab === 'clientes' ? '0 2px 4px rgba(0,0,0,0.1)' : 'none'
+              }}
+            >
+              👥 Clientes & Riesgo
+            </button>
+          </nav>
+
+        </div>
+      </header>
+
+      {/* CONTENIDO PRINCIPAL */}
+      <section style={{ maxWidth: '1200px', margin: '2rem auto', padding: '0 1.5rem' }}>
+        {activeTab === 'stock' && <StockContainer supabase={supabase} />}
+        {activeTab === 'clientes' && <ClientesContainer supabase={supabase} />}
+      </section>
+    </main>
   );
 }
