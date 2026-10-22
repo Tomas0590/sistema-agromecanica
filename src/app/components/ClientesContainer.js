@@ -345,7 +345,7 @@ export default function ClientesContainer({ supabase }) {
                   Razón Social {ordenColumna === 'razon_social' ? (ordenAsc ? '▲' : '▼') : '⇅'}
                 </th>
                 <th style={{ padding: '0.75rem 1rem' }}>CUIT / DNI</th>
-                <th style={{ padding: '0.75rem 1rem', textAlign: 'center' }}>Sit. BCRA (Click p/ La Macro)</th>
+                <th style={{ padding: '0.75rem 1rem', textAlign: 'center' }}>Situacion Crediticia</th>
                 <th style={{ padding: '0.75rem 1rem', textAlign: 'center' }}>Acción</th>
               </tr>
             </thead>
