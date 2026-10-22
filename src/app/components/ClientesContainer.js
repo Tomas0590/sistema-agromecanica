@@ -8,12 +8,12 @@ export default function ClientesContainer({ supabase }) {
   const [ordenColumna, setOrdenColumna] = useState('razon_social');
   const [ordenAsc, setOrdenAsc] = useState(true);
 
-  // Cargas masivas
+  // Estados de procesos masivos
   const [cargandoBCRA, setCargandoBCRA] = useState(false);
   const [cargandoNombres, setCargandoNombres] = useState(false);
   const [buscandoCuitApi, setBuscandoCuitApi] = useState(false);
 
-  // Formulario de alta
+  // Campos para el formulario
   const [razonSocial, setRazonSocial] = useState('');
   const [cuitDni, setCuitDni] = useState('');
   const [condicionIva, setCondicionIva] = useState('Responsable Inscripto');
@@ -29,35 +29,42 @@ export default function ClientesContainer({ supabase }) {
   }, []);
 
   const cargarClientes = async () => {
-    const { data, error } = await supabase
-      .from('clientes')
-      .select('*')
-      .order('razon_social', { ascending: true });
+    try {
+      const { data, error } = await supabase
+        .from('clientes')
+        .select('*')
+        .order('razon_social', { ascending: true });
 
-    if (error) {
-      console.error('Error al consultar clientes en Supabase:', error.message);
-    } else if (data) {
-      setClientes(data);
+      if (error) {
+        console.error('Error Supabase:', error.message);
+      } else if (data) {
+        setClientes(data);
+      }
+    } catch (e) {
+      console.error('Error al conectar con la BD:', e);
     }
   };
 
-  // AUTOCOMPLETAR DESDE PADRÓN AL INGRESAR CUIT (11 DÍGITOS)
+  // AUTOCOMPLETAR RAZÓN SOCIAL AL TIPEAR CUIT (11 DÍGITOS)
   const buscarCuitEnPadron = async (cuitIngresado) => {
     const cuitLimpio = cuitIngresado.replace(/\D/g, '');
     if (cuitLimpio.length !== 11) return;
 
     setBuscandoCuitApi(true);
     try {
-      const res = await fetch(`https://afip.sstack.app/api/v1/cuit/${cuitLimpio}`);
+      // Consulta a padrón AFIP / CUIT abierto
+      const res = await fetch(`https://afip.republica.dev/cuit/${cuitLimpio}`);
       if (res.ok) {
         const data = await res.json();
-        const nombreEncontrado = data.razonSocial || data.nombre;
-        if (nombreEncontrado) setRazonSocial(nombreEncontrado);
-        if (data.condicionIva) setCondicionIva(data.condicionIva);
+        const nombreEncontrado = data.razon_social || data.nombre || data.razonSocial;
+        if (nombreEncontrado) {
+          setRazonSocial(nombreEncontrado);
+        }
+        if (data.condicion_iva) setCondicionIva(data.condicion_iva);
         if (data.domicilio) setDireccion(data.domicilio);
       }
     } catch (err) {
-      console.log('No se pudo autocompletar CUIT:', err);
+      console.log('No se pudo autocompletar CUIT automáticamente:', err);
     } finally {
       setBuscandoCuitApi(false);
     }
@@ -70,91 +77,6 @@ export default function ClientesContainer({ supabase }) {
     if (soloNumeros.length === 11) {
       buscarCuitEnPadron(soloNumeros);
     }
-  };
-
-  // BOTÓN MASIVO: AUTOCOMPLETAR NOMBRES PENDIENTES
-  const autocompletarNombresPendientes = async () => {
-    setCargandoNombres(true);
-    const pendientes = clientes.filter((c) => {
-      const valorCuit = (c.cuit_dni || c.cuit || '').replace(/\D/g, '');
-      const sinNombre = !c.razon_social || c.razon_social.trim() === '' || c.razon_social.includes('PENDIENTE');
-      return sinNombre && valorCuit.length === 11;
-    });
-
-    if (pendientes.length === 0) {
-      alert('No hay clientes pendientes de nombre que tengan un CUIT de 11 dígitos.');
-      setCargandoNombres(false);
-      return;
-    }
-
-    let actualizados = 0;
-    for (const cli of pendientes) {
-      const cuitLimpio = (cli.cuit_dni || cli.cuit).replace(/\D/g, '');
-      try {
-        const res = await fetch(`https://afip.sstack.app/api/v1/cuit/${cuitLimpio}`);
-        if (res.ok) {
-          const data = await res.json();
-          const nombreEncontrado = data.razonSocial || data.nombre;
-          if (nombreEncontrado) {
-            await supabase
-              .from('clientes')
-              .update({
-                razon_social: nombreEncontrado,
-                condicion_iva: data.condicionIva || cli.condicion_iva
-              })
-              .eq('id', cli.id);
-            actualizados++;
-          }
-        }
-      } catch (e) {
-        console.error(`Error procesando CUIT ${cuitLimpio}:`, e);
-      }
-    }
-
-    setCargandoNombres(false);
-    alert(`Proceso finalizado. Se actualizaron ${actualizados} clientes.`);
-    cargarClientes();
-  };
-
-  // BOTÓN MASIVO: CONSULTAR BCRA
-  const corroborarBCRAMasivamente = async () => {
-    setCargandoBCRA(true);
-    const conCuit = clientes.filter((c) => {
-      const val = (c.cuit_dni || c.cuit || '').replace(/\D/g, '');
-      return val.length === 11;
-    });
-
-    if (conCuit.length === 0) {
-      alert('No se encontraron clientes con CUIT válido para evaluar en el BCRA.');
-      setCargandoBCRA(false);
-      return;
-    }
-
-    let evaluados = 0;
-    for (const cli of conCuit) {
-      const cuitLimpio = (cli.cuit_dni || cli.cuit).replace(/\D/g, '');
-      try {
-        const res = await fetch(`https://api.bcra.gob.ar/centraldedeudores/v1.0/Deudas/${cuitLimpio}`);
-        if (res.ok) {
-          const data = await res.json();
-          let peorSituacion = 1;
-          if (data.results && data.results.periodos && data.results.periodos.length > 0) {
-            const deudas = data.results.periodos[0].entidades || [];
-            deudas.forEach((e) => {
-              if (e.situacion > peorSituacion) peorSituacion = e.situacion;
-            });
-          }
-          await supabase.from('clientes').update({ situacion_bcra: peorSituacion }).eq('id', cli.id);
-          evaluados++;
-        }
-      } catch (e) {
-        console.error(`Error consultando BCRA CUIT ${cuitLimpio}:`, e);
-      }
-    }
-
-    setCargandoBCRA(false);
-    alert(`Evaluación BCRA finalizada. Se procesaron ${evaluados} clientes.`);
-    cargarClientes();
   };
 
   const guardarCliente = async (e) => {
@@ -243,30 +165,12 @@ export default function ClientesContainer({ supabase }) {
           </span>
         </div>
 
-        <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
-          <button 
-            onClick={autocompletarNombresPendientes}
-            disabled={cargandoNombres}
-            style={{ background: '#0284c7', color: '#fff', border: 'none', padding: '0.55rem 0.9rem', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold', fontSize: '0.8rem', opacity: cargandoNombres ? 0.7 : 1 }}
-          >
-            {cargandoNombres ? '⏳ Procesando...' : '⚡ Autocompletar Nombres Pendientes'}
-          </button>
-
-          <button 
-            onClick={corroborarBCRAMasivamente}
-            disabled={cargandoBCRA}
-            style={{ background: '#d97706', color: '#fff', border: 'none', padding: '0.55rem 0.9rem', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold', fontSize: '0.8rem', opacity: cargandoBCRA ? 0.7 : 1 }}
-          >
-            {cargandoBCRA ? '⏳ Consultando BCRA...' : '🔍 Corroborar BCRA Masivamente'}
-          </button>
-
-          <button 
-            onClick={() => { setMensajeForm(''); setMostrarModal(true); }}
-            style={{ background: '#15803d', color: '#fff', border: 'none', padding: '0.55rem 1rem', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold', fontSize: '0.85rem' }}
-          >
-            ➕ Nuevo Cliente
-          </button>
-        </div>
+        <button 
+          onClick={() => { setMensajeForm(''); setMostrarModal(true); }}
+          style={{ background: '#15803d', color: '#fff', border: 'none', padding: '0.55rem 1rem', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold', fontSize: '0.85rem' }}
+        >
+          ➕ Nuevo Cliente
+        </button>
       </div>
 
       {/* CONTENEDOR CÁLIDO */}
@@ -276,7 +180,7 @@ export default function ClientesContainer({ supabase }) {
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem', flexWrap: 'wrap', gap: '1rem' }}>
           <input
             type="text"
-            placeholder="🔍 Buscar por Razón Social, CUIT, Dirección, Teléfono..."
+            placeholder="🔍 Buscar por Razón Social, CUIT, Dirección..."
             value={busqueda}
             onChange={(e) => setBusqueda(e.target.value)}
             style={{ flex: 1, maxWidth: '480px', padding: '0.6rem 0.85rem', borderRadius: '8px', border: '1px solid #dcd5c9', backgroundColor: '#f5f2eb', color: '#2b2927', fontSize: '0.875rem' }}
@@ -297,7 +201,6 @@ export default function ClientesContainer({ supabase }) {
                 <th style={{ padding: '0.75rem 1rem' }}>CUIT / DNI</th>
                 <th style={{ padding: '0.75rem 1rem' }}>Cond. IVA</th>
                 <th style={{ padding: '0.75rem 1rem' }}>Contacto / Dirección</th>
-                <th style={{ padding: '0.75rem 1rem', textAlign: 'center' }}>Sit. BCRA</th>
                 <th style={{ padding: '0.75rem 1rem', textAlign: 'center' }}>Consulta La Macro</th>
                 <th style={{ padding: '0.75rem 1rem', textAlign: 'center' }}>Acción</th>
               </tr>
@@ -305,14 +208,13 @@ export default function ClientesContainer({ supabase }) {
             <tbody>
               {clientesFiltrados.length === 0 ? (
                 <tr>
-                  <td colSpan="7" style={{ textAlign: 'center', padding: '2.5rem', color: '#a8a29e' }}>
-                    No se encontraron clientes en el sistema.
+                  <td colSpan="6" style={{ textAlign: 'center', padding: '2.5rem', color: '#a8a29e' }}>
+                    No se encontraron clientes registrados.
                   </td>
                 </tr>
               ) : (
                 clientesFiltrados.map((c) => {
                   const valorCuit = c.cuit_dni || c.cuit || '';
-                  const sitBcra = c.situacion_bcra || 1;
 
                   return (
                     <tr key={c.id} style={{ borderBottom: '1px solid #f0ebe1' }}>
@@ -327,19 +229,6 @@ export default function ClientesContainer({ supabase }) {
                       </td>
                       <td style={{ padding: '0.75rem 1rem', color: '#57534e' }}>
                         {c.direccion || '-'} {c.telefono ? `(${c.telefono})` : ''}
-                      </td>
-                      <td style={{ padding: '0.75rem 1rem', textAlign: 'center' }}>
-                        <span style={{
-                          padding: '0.2rem 0.55rem',
-                          borderRadius: '9999px',
-                          fontSize: '0.75rem',
-                          fontWeight: 'bold',
-                          backgroundColor: sitBcra === 1 ? '#f0fdf4' : sitBcra <= 2 ? '#fefce8' : '#fef2f2',
-                          color: sitBcra === 1 ? '#166534' : sitBcra <= 2 ? '#ca8a04' : '#dc2626',
-                          border: `1px solid ${sitBcra === 1 ? '#bbf7d0' : sitBcra <= 2 ? '#fef08a' : '#fecaca'}`
-                        }}>
-                          Sit. {sitBcra} {sitBcra > 1 ? '⚠️' : '✅'}
-                        </span>
                       </td>
                       <td style={{ padding: '0.75rem 1rem', textAlign: 'center' }}>
                         {valorCuit ? (
