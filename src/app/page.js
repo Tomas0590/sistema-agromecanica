@@ -8,7 +8,7 @@ import FormCliente from './components/FormCliente';
 import TablaClientes from './components/TablaClientes';
 import ModalCliente from './components/ModalCliente';
 
-const SUPABASE_URL = 'https://tqfpcogdvhtvvhdqewdg.supabase.co';
+const SUPABASE_URL = '[https://tqfpcogdvhtvvhdqewdg.supabase.co](https://tqfpcogdvhtvvhdqewdg.supabase.co)';
 const SUPABASE_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'sb_publishable_MchMROFkf12BgkCahzrC5w_qAlaGXKr';
 const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 
@@ -20,6 +20,7 @@ export default function Home() {
 
   const [activeTab, setActiveTab] = useState('clientes');
 
+  // ESTADOS CLIENTES
   const [clientes, setClientes] = useState([]);
   const [editingId, setEditingId] = useState(null);
   const [cuit, setCuit] = useState('');
@@ -32,7 +33,6 @@ export default function Home() {
   const [mensajeCliente, setMensajeCliente] = useState('');
 
   const [mostrarModalForm, setMostrarModalForm] = useState(false);
-
   const [resultadosBcra, setResultadosBcra] = useState({});
   const [loadingBcraId, setLoadingBcraId] = useState(null);
   const [clienteSeleccionado, setClienteSeleccionado] = useState(null);
@@ -164,8 +164,8 @@ export default function Home() {
       let chequesRechazados = 0;
 
       try {
-        const urlDeudas = `https://api.bcra.gob.ar/centraldedeudores/v1.0/Deudas/${cleanCuit}`;
-        const urlCheques = `https://api.bcra.gob.ar/centraldedeudores/v1.0/Deudas/ChequesRechazados/${cleanCuit}`;
+        const urlDeudas = `[https://api.bcra.gob.ar/centraldedeudores/v1.0/Deudas/$](https://api.bcra.gob.ar/centraldedeudores/v1.0/Deudas/$){cleanCuit}`;
+        const urlCheques = `[https://api.bcra.gob.ar/centraldedeudores/v1.0/Deudas/ChequesRechazados/$](https://api.bcra.gob.ar/centraldedeudores/v1.0/Deudas/ChequesRechazados/$){cleanCuit}`;
 
         const [resDeudas, resCheques] = await Promise.allSettled([
           fetch(urlDeudas),
@@ -233,8 +233,8 @@ export default function Home() {
     setLoadingBcraId(clienteId);
 
     try {
-      const urlDeudas = `https://api.bcra.gob.ar/centraldedeudores/v1.0/Deudas/${cleanCuit}`;
-      const urlCheques = `https://api.bcra.gob.ar/centraldedeudores/v1.0/Deudas/ChequesRechazados/${cleanCuit}`;
+      const urlDeudas = `[https://api.bcra.gob.ar/centraldedeudores/v1.0/Deudas/$](https://api.bcra.gob.ar/centraldedeudores/v1.0/Deudas/$){cleanCuit}`;
+      const urlCheques = `[https://api.bcra.gob.ar/centraldedeudores/v1.0/Deudas/ChequesRechazados/$](https://api.bcra.gob.ar/centraldedeudores/v1.0/Deudas/ChequesRechazados/$){cleanCuit}`;
 
       const [resDeudas, resCheques] = await Promise.allSettled([
         fetch(urlDeudas),
@@ -393,18 +393,33 @@ export default function Home() {
 
   return (
     <div style={{ minHeight: '100vh', backgroundColor: '#0f172a', color: '#f8fafc', fontFamily: 'sans-serif' }}>
-      <Navbar activeTab={activeTab} setActiveTab={setActiveTab} onLogout={handleLogout} />
+      <Navbar activeTab="{activeTab}" onLogout="{handleLogout}" setActiveTab="{setActiveTab}"/>
 
       <main style={{ padding: '2rem', maxWidth: '1200px', margin: '0 auto' }}>
-        {activeTab === 'pedidos' && (
+        
+        {/* PESTAÑA STOCK / INVENTARIO */}
+        {activeTab === 'stock' && (
           <div>
-            <h2 style={{ color: '#cbd5e1', marginBottom: '1.5rem' }}>Gestión de Stock y Pedidos de Venta</h2>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
+              <h2 style={{ color: '#cbd5e1', margin: 0 }}>Catálogo de Inventario y Stock</h2>
+            </div>
             <div style={{ background: '#1e293b', padding: '2rem', borderRadius: '8px', border: '1px solid #334155', textAlign: 'center' }}>
-              <p style={{ color: '#94a3b8', fontSize: '1.1rem' }}>Módulo de Puntos de Venta y Stock en preparación.</p>
+              <p style={{ color: '#94a3b8', fontSize: '1.1rem' }}>Módulo de Inventario aislado listo para conectar los componentes de productos.</p>
             </div>
           </div>
         )}
 
+        {/* PESTAÑA PEDIDOS DE VENTA */}
+        {activeTab === 'pedidos' && (
+          <div>
+            <h2 style={{ color: '#cbd5e1', marginBottom: '1.5rem' }}>Pedidos de Venta</h2>
+            <div style={{ background: '#1e293b', padding: '2rem', borderRadius: '8px', border: '1px solid #334155', textAlign: 'center' }}>
+              <p style={{ color: '#94a3b8', fontSize: '1.1rem' }}>Módulo de Pedidos en preparación.</p>
+            </div>
+          </div>
+        )}
+
+        {/* PESTAÑA CLIENTES */}
         {activeTab === 'clientes' && (
           <div>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem', flexWrap: 'wrap', gap: '1rem' }}>
@@ -471,36 +486,14 @@ export default function Home() {
               </div>
             )}
 
-            {/* FORMULARIO FLOTANTE (MODAL) */}
+            {/* FORMULARIO FLOTANTE CLIENTE */}
             {mostrarModalForm && (
-              <FormCliente 
-                editingId={editingId}
-                cuit={cuit} setCuit={setCuit}
-                razonSocial={razonSocial} setRazonSocial={setRazonSocial}
-                condicionIva={condicionIva} setCondicionIva={setCondicionIva}
-                email={email} setEmail={setEmail}
-                telefono={telefono} setTelefono={setTelefono}
-                direccion={direccion} setDireccion={setDireccion}
-                loadingCuit={loadingCuit}
-                mensajeCliente={mensajeCliente}
-                onBuscarCuit={buscarCuit}
-                onGuardar={guardarCliente}
-                onCancelarEdicion={cancelarEdicion}
-              />
+              <FormCliente condicionIva="{condicionIva}" cuit="{cuit}" direccion="{direccion}" editingId="{editingId}" email="{email}" loadingCuit="{loadingCuit}" mensajeCliente="{mensajeCliente}" onBuscarCuit="{buscarCuit}" onCancelarEdicion="{cancelarEdicion}" onGuardar="{guardarCliente}" razonSocial="{razonSocial}" setCondicionIva="{setCondicionIva}" setCuit="{setCuit}" setDireccion="{setDireccion}" setEmail="{setEmail}" setRazonSocial="{setRazonSocial}" setTelefono="{setTelefono}" telefono="{telefono}"/>
             )}
 
-            <TablaClientes 
-              clientes={clientes}
-              resultadosBcra={resultadosBcra}
-              loadingBcraId={loadingBcraId}
-              onConsultarBcra={consultarBcra}
-              onPrepararEdicion={prepararEdicion}
-              onSelectCliente={setClienteSeleccionado}
-            />
+            <TablaClientes clientes="{clientes}" loadingBcraId="{loadingBcraId}" onConsultarBcra="{consultarBcra}" onPrepararEdicion="{prepararEdicion}" onSelectCliente="{setClienteSeleccionado}" resultadosBcra="{resultadosBcra}"/>
 
-            <ModalCliente 
-              cliente={clienteSeleccionado}
-              onClose={() => setClienteSeleccionado(null)}
+            <ModalCliente cliente="{clienteSeleccionado}" onClose="{()"> setClienteSeleccionado(null)}
               onPrepararEdicion={prepararEdicion}
               onBorrarCliente={borrarCliente}
             />
