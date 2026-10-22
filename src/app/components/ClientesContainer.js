@@ -346,7 +346,7 @@ export default function ClientesContainer({ supabase }) {
                 </th>
                 <th style={{ padding: '0.75rem 1rem' }}>CUIT / DNI</th>
                 <th style={{ padding: '0.75rem 1rem', textAlign: 'center' }}>Situacion Crediticia</th>
-                <th style={{ padding: '0.75rem 1rem', textAlign: 'center' }}>Acción</th>
+                <th style={{ padding: '0.75rem 1rem', textAlign: 'center' }}>Editar</th>
               </tr>
             </thead>
             <tbody>
