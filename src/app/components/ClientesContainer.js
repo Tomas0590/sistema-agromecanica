@@ -8,7 +8,10 @@ export default function ClientesContainer({ supabase }) {
   const [ordenColumna, setOrdenColumna] = useState('razon_social');
   const [ordenAsc, setOrdenAsc] = useState(true);
 
-  // Estados de procesos masivos e individuales
+  // ESTADO LOCAL DE SITUACIÓN BCRA (EN MEMORIA / SIN TOCAR SUPABASE)
+  const [situacionesMap, setSituacionesMap] = useState({});
+
+  // Estados de procesos
   const [cargandoBCRA, setCargandoBCRA] = useState(false);
   const [progresoBcra, setProgresoBcra] = useState('');
   const [cargandoIndividualId, setCargandoIndividualId] = useState(null);
@@ -54,8 +57,6 @@ export default function ClientesContainer({ supabase }) {
   // CONSULTA RÁPIDA A BCRA CON TIMEOUT DE 3 SEGUNDOS
   const consultarBCRACuit = async (cuitLimpio) => {
     const targetUrl = `https://api.bcra.gob.ar/centraldedeudores/v1.0/Deudas/${cuitLimpio}`;
-    
-    // Controlador de tiempo límite (3 segundos máx)
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 3000);
 
@@ -83,7 +84,7 @@ export default function ClientesContainer({ supabase }) {
     return null;
   };
 
-  // CONSULTA BCRA INDIVIDUAL
+  // CONSULTA INDIVIDUAL (ACTUALIZA EL ESTADO LOCAL)
   const corroborarBCRAIndividual = async (cliente, e) => {
     if (e) e.stopPropagation();
 
@@ -97,29 +98,18 @@ export default function ClientesContainer({ supabase }) {
     const nuevaSit = await consultarBCRACuit(cuitLimpio);
 
     if (nuevaSit !== null) {
-      const { error } = await supabase
-        .from('clientes')
-        .update({ situacion_bcra: nuevaSit })
-        .eq('id', cliente.id);
-
-      if (!error) {
-        setClientes((prev) =>
-          prev.map((item) => (item.id === cliente.id ? { ...item, situacion_bcra: nuevaSit } : item))
-        );
-        if (clienteDetalle?.id === cliente.id) {
-          setClienteDetalle((prev) => ({ ...prev, situacion_bcra: nuevaSit }));
-        }
-      } else {
-        alert(`Error al guardar en Supabase: ${error.message}`);
-      }
+      setSituacionesMap((prev) => ({
+        ...prev,
+        [cliente.id]: nuevaSit
+      }));
     } else {
-      alert('No se pudo conectar con la consulta del BCRA en este momento.');
+      alert('No se pudo obtener la información del BCRA en este momento.');
     }
 
     setCargandoIndividualId(null);
   };
 
-  // BOTÓN MASIVO RÁPIDO: PROCESAMIENTO EN PARALELO (POR LOTES DE 5)
+  // CONSULTA MASIVA POR LOTES (ACTUALIZA EL ESTADO LOCAL EN TIEMPO REAL)
   const corroborarBCRAMasivamente = async () => {
     setCargandoBCRA(true);
 
@@ -137,7 +127,7 @@ export default function ClientesContainer({ supabase }) {
 
     let evaluados = 0;
     let errores = 0;
-    const TAMANO_LOTE = 5; // Consulta 5 clientes juntos a la vez
+    const TAMANO_LOTE = 5;
 
     for (let i = 0; i < conCuit.length; i += TAMANO_LOTE) {
       const lote = conCuit.slice(i, i + TAMANO_LOTE);
@@ -149,7 +139,10 @@ export default function ClientesContainer({ supabase }) {
           const nuevaSit = await consultarBCRACuit(cuitLimpio);
 
           if (nuevaSit !== null) {
-            await supabase.from('clientes').update({ situacion_bcra: nuevaSit }).eq('id', cli.id);
+            setSituacionesMap((prev) => ({
+              ...prev,
+              [cli.id]: nuevaSit
+            }));
             evaluados++;
           } else {
             errores++;
@@ -161,7 +154,6 @@ export default function ClientesContainer({ supabase }) {
     setCargandoBCRA(false);
     setProgresoBcra('');
     alert(`Evaluación BCRA finalizada.\n✅ Procesados con éxito: ${evaluados}\n⚠️ No consultados: ${errores}`);
-    cargarClientes();
   };
 
   // AUTOCOMPLETAR RAZÓN SOCIAL AL INGRESAR CUIT EN NUEVO CLIENTE
@@ -195,7 +187,7 @@ export default function ClientesContainer({ supabase }) {
     }
   };
 
-  // BOTÓN MASIVO: AUTOCOMPLETAR NOMBRES PENDIENTES
+  // AUTOCOMPLETAR NOMBRES PENDIENTES
   const autocompletarNombresPendientes = async () => {
     setCargandoNombres(true);
     const pendientes = clientes.filter((c) => {
@@ -426,8 +418,8 @@ export default function ClientesContainer({ supabase }) {
               ) : (
                 clientesFiltrados.map((c) => {
                   const valorCuit = String(c.cuit_dni || c.cuit || '');
-                  const sitBcra = c.situacion_bcra || 1;
                   const cuitLimpio = valorCuit.replace(/\D/g, '');
+                  const sitBcra = situacionesMap[c.id] || 1;
                   const estaCargandoInd = cargandoIndividualId === c.id;
 
                   return (
@@ -607,12 +599,12 @@ export default function ClientesContainer({ supabase }) {
                 />
               </div>
 
-              {/* BARRA DE ESTADO BCRA E INDIVIDUAL DENTRO DEL MODAL */}
+              {/* BARRA BCRA EN MODAL */}
               <div style={{ backgroundColor: '#f5f2eb', padding: '0.75rem', borderRadius: '8px', border: '1px solid #e5e0d8', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <div>
                   <span style={{ display: 'block', fontSize: '0.75rem', color: '#78716c', fontWeight: '700' }}>SITUACIÓN BCRA ACTUAL</span>
                   <span style={{ fontSize: '0.85rem', color: '#57534e' }}>
-                    Sit. {clienteDetalle.situacion_bcra || 1} {(clienteDetalle.situacion_bcra || 1) > 1 ? '⚠️' : '✅'}
+                    Sit. {situacionesMap[clienteDetalle.id] || 1} {(situacionesMap[clienteDetalle.id] || 1) > 1 ? '⚠️' : '✅'}
                   </span>
                 </div>
                 <button
