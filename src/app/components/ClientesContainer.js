@@ -25,7 +25,12 @@ export default function ClientesContainer({ supabase }) {
       .from('clientes')
       .select('*')
       .order('razon_social', { ascending: true });
-    if (!error && data) setClientes(data);
+
+    if (error) {
+      console.error('Error al cargar clientes de Supabase:', error.message);
+    } else if (data) {
+      setClientes(data);
+    }
   };
 
   const guardarCliente = async (e) => {
