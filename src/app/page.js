@@ -5,9 +5,9 @@ import { createClient } from '@supabase/supabase-js';
 import ClientesContainer from './components/ClientesContainer';
 import StockContainer from './components/StockContainer';
 
-// URL real de tu proyecto Supabase (sin /rest/v1/ al final)
+// CREDENCIALES DIRECTAS DE SUPABASE
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://tqfpcogdvhtvvhdqewdg.supabase.co';
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
+const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRxZnBjb2dkdmh0dnZoZHFld2RnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE0MDM3MzUsImV4cCI6MjEwNjk3OTczNX0.WymDghVxfaQc23elBDs9su8_4o7jJFyl77snKi2H7uI';
 
 const supabase = createClient(
   supabaseUrl.trim(),
