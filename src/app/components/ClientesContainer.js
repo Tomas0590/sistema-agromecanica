@@ -8,12 +8,15 @@ export default function ClientesContainer({ supabase }) {
   const [ordenColumna, setOrdenColumna] = useState('razon_social');
   const [ordenAsc, setOrdenAsc] = useState(true);
 
-  // Cargas masivas
+  // Estados de procesos masivos
   const [cargandoBCRA, setCargandoBCRA] = useState(false);
   const [cargandoNombres, setCargandoNombres] = useState(false);
   const [buscandoCuitApi, setBuscandoCuitApi] = useState(false);
 
-  // Formulario de alta
+  // Cliente seleccionado para ver la Ficha Completa
+  const [clienteDetalle, setClienteDetalle] = useState(null);
+
+  // Formulario de alta de nuevo cliente
   const [razonSocial, setRazonSocial] = useState('');
   const [cuitDni, setCuitDni] = useState('');
   const [condicionIva, setCondicionIva] = useState('Responsable Inscripto');
@@ -21,7 +24,7 @@ export default function ClientesContainer({ supabase }) {
   const [email, setEmail] = useState('');
   const [direccion, setDireccion] = useState('');
 
-  const [mostrarModal, setMostrarModal] = useState(false);
+  const [mostrarModalNuevo, setMostrarModalNuevo] = useState(false);
   const [mensajeForm, setMensajeForm] = useState('');
 
   useEffect(() => {
@@ -45,7 +48,7 @@ export default function ClientesContainer({ supabase }) {
     }
   };
 
-  // AUTOCOMPLETAR AL INGRESAR CUIT (11 DÍGITOS) EN EL MODAL
+  // AUTOCOMPLETAR RAZÓN SOCIAL AL INGRESAR CUIT (11 DÍGITOS) EN NUEVO CLIENTE
   const buscarCuitEnPadron = async (cuitIngresado) => {
     const cuitLimpio = cuitIngresado.replace(/\D/g, '');
     if (cuitLimpio.length !== 11) return;
@@ -193,7 +196,7 @@ export default function ClientesContainer({ supabase }) {
       setTelefono('');
       setEmail('');
       setDireccion('');
-      setMostrarModal(false);
+      setMostrarModalNuevo(false);
       cargarClientes();
     }
   };
@@ -201,7 +204,10 @@ export default function ClientesContainer({ supabase }) {
   const borrarCliente = async (id) => {
     if (!confirm('¿Estás seguro de eliminar este cliente?')) return;
     const { error } = await supabase.from('clientes').delete().eq('id', id);
-    if (!error) cargarClientes();
+    if (!error) {
+      if (clienteDetalle?.id === id) setClienteDetalle(null);
+      cargarClientes();
+    }
   };
 
   const cambiarOrden = (columna) => {
@@ -267,7 +273,7 @@ export default function ClientesContainer({ supabase }) {
           </button>
 
           <button 
-            onClick={() => { setMensajeForm(''); setMostrarModal(true); }}
+            onClick={() => { setMensajeForm(''); setMostrarModalNuevo(true); }}
             style={{ background: '#15803d', color: '#fff', border: 'none', padding: '0.55rem 1rem', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold', fontSize: '0.85rem' }}
           >
             ➕ Nuevo Cliente
@@ -292,7 +298,7 @@ export default function ClientesContainer({ supabase }) {
           </span>
         </div>
 
-        {/* TABLA DE CLIENTES */}
+        {/* TABLA LIMPIA (SIN CONTACTO NI CONDICIÓN IVA) */}
         <div style={{ overflowX: 'auto' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '0.875rem' }}>
             <thead>
@@ -301,8 +307,6 @@ export default function ClientesContainer({ supabase }) {
                   Razón Social {ordenColumna === 'razon_social' ? (ordenAsc ? '▲' : '▼') : '⇅'}
                 </th>
                 <th style={{ padding: '0.75rem 1rem' }}>CUIT / DNI</th>
-                <th style={{ padding: '0.75rem 1rem' }}>Cond. IVA</th>
-                <th style={{ padding: '0.75rem 1rem' }}>Contacto / Dirección</th>
                 <th style={{ padding: '0.75rem 1rem', textAlign: 'center' }}>Sit. BCRA</th>
                 <th style={{ padding: '0.75rem 1rem', textAlign: 'center' }}>Consulta La Macro</th>
                 <th style={{ padding: '0.75rem 1rem', textAlign: 'center' }}>Acción</th>
@@ -311,7 +315,7 @@ export default function ClientesContainer({ supabase }) {
             <tbody>
               {clientesFiltrados.length === 0 ? (
                 <tr>
-                  <td colSpan="7" style={{ textAlign: 'center', padding: '2.5rem', color: '#a8a29e' }}>
+                  <td colSpan="5" style={{ textAlign: 'center', padding: '2.5rem', color: '#a8a29e' }}>
                     No se encontraron clientes en el sistema.
                   </td>
                 </tr>
@@ -320,26 +324,19 @@ export default function ClientesContainer({ supabase }) {
                   const valorCuit = c.cuit_dni || c.cuit || '';
                   const sitBcra = c.situacion_bcra || 1;
 
-                  // Consolidación de información de contacto
-                  const detallesContacto = [
-                    c.direccion,
-                    c.telefono ? `Tel: ${c.telefono}` : null,
-                    c.email
-                  ].filter(Boolean).join(' | ');
-
                   return (
-                    <tr key={c.id} style={{ borderBottom: '1px solid #f0ebe1' }}>
+                    <tr 
+                      key={c.id} 
+                      style={{ borderBottom: '1px solid #f0ebe1', cursor: 'pointer', transition: 'background-color 0.15s' }}
+                      onClick={() => setClienteDetalle(c)}
+                      onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#f5f0e6'}
+                      onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+                    >
                       <td style={{ padding: '0.75rem 1rem', fontWeight: 'bold', color: '#1c1917' }}>
-                        {c.razon_social}
+                        👤 {c.razon_social}
                       </td>
                       <td style={{ padding: '0.75rem 1rem', color: '#44403c', fontFamily: 'monospace' }}>
                         {valorCuit || '-'}
-                      </td>
-                      <td style={{ padding: '0.75rem 1rem', color: '#57534e' }}>
-                        {c.condicion_iva || '-'}
-                      </td>
-                      <td style={{ padding: '0.75rem 1rem', color: '#57534e' }}>
-                        {detallesContacto || '-'}
                       </td>
                       <td style={{ padding: '0.75rem 1rem', textAlign: 'center' }}>
                         <span style={{
@@ -354,7 +351,7 @@ export default function ClientesContainer({ supabase }) {
                           Sit. {sitBcra} {sitBcra > 1 ? '⚠️' : '✅'}
                         </span>
                       </td>
-                      <td style={{ padding: '0.75rem 1rem', textAlign: 'center' }}>
+                      <td style={{ padding: '0.75rem 1rem', textAlign: 'center' }} onClick={(e) => e.stopPropagation()}>
                         {valorCuit ? (
                           <a
                             href="https://www.lamacro.ar/central-de-deudores/"
@@ -366,10 +363,11 @@ export default function ClientesContainer({ supabase }) {
                           </a>
                         ) : '-'}
                       </td>
-                      <td style={{ padding: '0.75rem 1rem', textAlign: 'center' }}>
+                      <td style={{ padding: '0.75rem 1rem', textAlign: 'center' }} onClick={(e) => e.stopPropagation()}>
                         <button
                           onClick={() => borrarCliente(c.id)}
                           style={{ backgroundColor: '#fef2f2', border: '1px solid #fecaca', color: '#dc2626', padding: '0.3rem 0.6rem', borderRadius: '6px', cursor: 'pointer', fontSize: '0.75rem', fontWeight: 'bold' }}
+                          title="Eliminar cliente"
                         >
                           🗑️
                         </button>
@@ -383,13 +381,116 @@ export default function ClientesContainer({ supabase }) {
         </div>
       </div>
 
+      {/* MODAL DETALLE / FICHA COMPLETA DEL CLIENTE */}
+      {clienteDetalle && (
+        <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.45)', backdropFilter: 'blur(3px)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}>
+          <div style={{ background: '#fcfbf9', border: '1px solid #e5e0d8', borderRadius: '14px', width: '100%', maxWidth: '580px', padding: '1.75rem', color: '#2b2927', boxShadow: '0 12px 30px rgba(0,0,0,0.12)' }}>
+            
+            {/* ENCABEZADO */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '1.25rem', borderBottom: '2px solid #eeeae1', paddingBottom: '0.85rem' }}>
+              <div>
+                <span style={{ fontSize: '0.75rem', fontWeight: '700', textTransform: 'uppercase', color: '#dc2626', letterSpacing: '0.05em' }}>
+                  Ficha de Cliente
+                </span>
+                <h3 style={{ margin: '0.2rem 0 0 0', color: '#1c1917', fontSize: '1.35rem', fontWeight: '800' }}>
+                  {clienteDetalle.razon_social}
+                </h3>
+              </div>
+              <button onClick={() => setClienteDetalle(null)} style={{ background: '#eeeae1', border: 'none', borderRadius: '50%', width: '32px', height: '32px', fontSize: '1rem', cursor: 'pointer', color: '#57534e', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                ✕
+              </button>
+            </div>
+
+            {/* GRILLA CON TODOS LOS DATOS */}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1.5rem' }}>
+              
+              <div style={{ backgroundColor: '#f5f2eb', padding: '0.85rem', borderRadius: '8px', border: '1px solid #e5e0d8' }}>
+                <span style={{ display: 'block', fontSize: '0.75rem', color: '#78716c', fontWeight: '700' }}>CUIT / DNI</span>
+                <span style={{ fontSize: '0.95rem', fontWeight: 'bold', color: '#1c1917', fontFamily: 'monospace' }}>
+                  {clienteDetalle.cuit_dni || clienteDetalle.cuit || 'Sin registrar'}
+                </span>
+              </div>
+
+              <div style={{ backgroundColor: '#f5f2eb', padding: '0.85rem', borderRadius: '8px', border: '1px solid #e5e0d8' }}>
+                <span style={{ display: 'block', fontSize: '0.75rem', color: '#78716c', fontWeight: '700' }}>CONDICIÓN IVA</span>
+                <span style={{ fontSize: '0.9rem', fontWeight: '600', color: '#2b2927' }}>
+                  {clienteDetalle.condicion_iva || 'No especificada'}
+                </span>
+              </div>
+
+              <div style={{ backgroundColor: '#f5f2eb', padding: '0.85rem', borderRadius: '8px', border: '1px solid #e5e0d8' }}>
+                <span style={{ display: 'block', fontSize: '0.75rem', color: '#78716c', fontWeight: '700' }}>TELÉFONO / CELULAR</span>
+                <span style={{ fontSize: '0.9rem', fontWeight: '600', color: '#2b2927' }}>
+                  {clienteDetalle.telefono || 'Sin teléfono'}
+                </span>
+              </div>
+
+              <div style={{ backgroundColor: '#f5f2eb', padding: '0.85rem', borderRadius: '8px', border: '1px solid #e5e0d8' }}>
+                <span style={{ display: 'block', fontSize: '0.75rem', color: '#78716c', fontWeight: '700' }}>EMAIL</span>
+                <span style={{ fontSize: '0.85rem', fontWeight: '600', color: '#2b2927', wordBreak: 'break-all' }}>
+                  {clienteDetalle.email || 'Sin correo electrónico'}
+                </span>
+              </div>
+
+              <div style={{ gridColumn: 'span 2', backgroundColor: '#f5f2eb', padding: '0.85rem', borderRadius: '8px', border: '1px solid #e5e0d8' }}>
+                <span style={{ display: 'block', fontSize: '0.75rem', color: '#78716c', fontWeight: '700' }}>DIRECCIÓN / LOCALIDAD</span>
+                <span style={{ fontSize: '0.9rem', fontWeight: '600', color: '#2b2927' }}>
+                  {clienteDetalle.direccion || 'Sin domicilio registrado'}
+                </span>
+              </div>
+
+              <div style={{ gridColumn: 'span 2', backgroundColor: '#f5f2eb', padding: '0.85rem', borderRadius: '8px', border: '1px solid #e5e0d8', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div>
+                  <span style={{ display: 'block', fontSize: '0.75rem', color: '#78716c', fontWeight: '700' }}>ESTADO / SITUACIÓN BCRA</span>
+                  <span style={{ fontSize: '0.85rem', color: '#57534e' }}>Evaluación de riesgo crediticio</span>
+                </div>
+                <span style={{
+                  padding: '0.3rem 0.75rem',
+                  borderRadius: '9999px',
+                  fontSize: '0.85rem',
+                  fontWeight: 'bold',
+                  backgroundColor: (clienteDetalle.situacion_bcra || 1) === 1 ? '#f0fdf4' : (clienteDetalle.situacion_bcra || 1) <= 2 ? '#fefce8' : '#fef2f2',
+                  color: (clienteDetalle.situacion_bcra || 1) === 1 ? '#166534' : (clienteDetalle.situacion_bcra || 1) <= 2 ? '#ca8a04' : '#dc2626',
+                  border: `1px solid ${(clienteDetalle.situacion_bcra || 1) === 1 ? '#bbf7d0' : (clienteDetalle.situacion_bcra || 1) <= 2 ? '#fef08a' : '#fecaca'}`
+                }}>
+                  Situación {clienteDetalle.situacion_bcra || 1} {(clienteDetalle.situacion_bcra || 1) > 1 ? '⚠️' : '✅'}
+                </span>
+              </div>
+
+            </div>
+
+            {/* BOTONES DE ACCIÓN DEL MODAL */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', pt: '0.5rem' }}>
+              {(clienteDetalle.cuit_dni || clienteDetalle.cuit) ? (
+                <a
+                  href="https://www.lamacro.ar/central-de-deudores/"
+                  target="_blank"
+                  rel="noreferrer"
+                  style={{ color: '#0284c7', textDecoration: 'none', fontWeight: 'bold', fontSize: '0.875rem' }}
+                >
+                  🔗 Consultar Padrón en La Macro ↗
+                </a>
+              ) : <div />}
+
+              <button 
+                onClick={() => setClienteDetalle(null)} 
+                style={{ padding: '0.6rem 1.25rem', borderRadius: '8px', border: 'none', background: '#15803d', color: '#fff', fontWeight: 'bold', cursor: 'pointer', fontSize: '0.875rem' }}
+              >
+                Cerrar Ficha
+              </button>
+            </div>
+
+          </div>
+        </div>
+      )}
+
       {/* MODAL NUEVO CLIENTE */}
-      {mostrarModal && (
+      {mostrarModalNuevo && (
         <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.4)', backdropFilter: 'blur(2px)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}>
           <div style={{ background: '#fcfbf9', border: '1px solid #e5e0d8', borderRadius: '12px', width: '100%', maxWidth: '520px', padding: '1.5rem', color: '#2b2927', boxShadow: '0 10px 25px rgba(0,0,0,0.1)' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
               <h3 style={{ margin: 0, color: '#dc2626', fontSize: '1.15rem' }}>➕ Cargar Nuevo Cliente</h3>
-              <button onClick={() => setMostrarModal(false)} style={{ background: 'transparent', border: 'none', fontSize: '1.1rem', cursor: 'pointer', color: '#78716c' }}>✕</button>
+              <button onClick={() => setMostrarModalNuevo(false)} style={{ background: 'transparent', border: 'none', fontSize: '1.1rem', cursor: 'pointer', color: '#78716c' }}>✕</button>
             </div>
             
             {mensajeForm && (
@@ -469,7 +570,7 @@ export default function ClientesContainer({ supabase }) {
               </div>
 
               <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end', marginTop: '0.5rem' }}>
-                <button type="button" onClick={() => setMostrarModal(false)} style={{ padding: '0.5rem 1rem', borderRadius: '6px', border: '1px solid #dcd5c9', background: '#eeeae1', cursor: 'pointer' }}>Cancelar</button>
+                <button type="button" onClick={() => setMostrarModalNuevo(false)} style={{ padding: '0.5rem 1rem', borderRadius: '6px', border: '1px solid #dcd5c9', background: '#eeeae1', cursor: 'pointer' }}>Cancelar</button>
                 <button type="submit" style={{ padding: '0.5rem 1rem', borderRadius: '6px', border: 'none', background: '#15803d', color: '#fff', fontWeight: 'bold', cursor: 'pointer' }}>Guardar Cliente</button>
               </div>
             </form>
