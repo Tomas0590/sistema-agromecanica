@@ -51,54 +51,39 @@ export default function ClientesContainer({ supabase }) {
     }
   };
 
-  // FUNCIÓN AUXILIAR CONSULTA BCRA POR CUIT
+  // CONSULTA RÁPIDA A BCRA CON TIMEOUT DE 3 SEGUNDOS
   const consultarBCRACuit = async (cuitLimpio) => {
     const targetUrl = `https://api.bcra.gob.ar/centraldedeudores/v1.0/Deudas/${cuitLimpio}`;
-    let res = null;
-    let exitoFetch = false;
+    
+    // Controlador de tiempo límite (3 segundos máx)
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 3000);
 
-    // Intento 1: AllOrigins raw
     try {
-      res = await fetch(`https://api.allorigins.win/raw?url=${encodeURIComponent(targetUrl)}`);
-      if (res.status === 200 || res.status === 404) exitoFetch = true;
-    } catch (e) {
-      exitoFetch = false;
-    }
-
-    // Intento 2: CorsProxy
-    if (!exitoFetch) {
-      try {
-        res = await fetch(`https://corsproxy.io/?${encodeURIComponent(targetUrl)}`);
-        if (res.status === 200 || res.status === 404) exitoFetch = true;
-      } catch (e) {
-        exitoFetch = false;
-      }
-    }
-
-    if (exitoFetch && res) {
-      let peorSituacion = 1;
+      const res = await fetch(`https://api.allorigins.win/raw?url=${encodeURIComponent(targetUrl)}`, {
+        signal: controller.signal
+      });
+      clearTimeout(timeoutId);
 
       if (res.status === 404) {
-        peorSituacion = 1;
+        return 1; // Sin deudas -> Sit 1
       } else if (res.ok) {
-        try {
-          const data = await res.json();
-          if (data.results && data.results.periodos && data.results.periodos.length > 0) {
-            const deudas = data.results.periodos[0].entidades || [];
-            deudas.forEach((e) => {
-              if (e.situacion > peorSituacion) peorSituacion = e.situacion;
-            });
-          }
-        } catch (errJson) {
-          peorSituacion = 1;
+        const data = await res.json();
+        let peorSituacion = 1;
+        if (data.results?.periodos?.[0]?.entidades) {
+          data.results.periodos[0].entidades.forEach((e) => {
+            if (e.situacion > peorSituacion) peorSituacion = e.situacion;
+          });
         }
+        return peorSituacion;
       }
-      return peorSituacion;
+    } catch (e) {
+      clearTimeout(timeoutId);
     }
     return null;
   };
 
-  // CONSULTA BCRA INDIVIDUAL PARA UN SOLO CLIENTE
+  // CONSULTA BCRA INDIVIDUAL
   const corroborarBCRAIndividual = async (cliente, e) => {
     if (e) e.stopPropagation();
 
@@ -128,16 +113,15 @@ export default function ClientesContainer({ supabase }) {
         alert(`Error al guardar en Supabase: ${error.message}`);
       }
     } else {
-      alert('No se pudo conectar con el servidor del BCRA en este momento.');
+      alert('No se pudo conectar con la consulta del BCRA en este momento.');
     }
 
     setCargandoIndividualId(null);
   };
 
-  // BOTÓN MASIVO: EVALUACIÓN BCRA CON PROGRESO EN VIVO
+  // BOTÓN MASIVO RÁPIDO: PROCESAMIENTO EN PARALELO (POR LOTES DE 5)
   const corroborarBCRAMasivamente = async () => {
     setCargandoBCRA(true);
-    setProgresoBcra('(0/0)');
 
     const conCuit = clientes.filter((c) => {
       const val = String(c.cuit_dni || c.cuit || '').replace(/\D/g, '');
@@ -153,22 +137,25 @@ export default function ClientesContainer({ supabase }) {
 
     let evaluados = 0;
     let errores = 0;
+    const TAMANO_LOTE = 5; // Consulta 5 clientes juntos a la vez
 
-    for (let i = 0; i < conCuit.length; i++) {
-      const cli = conCuit[i];
-      setProgresoBcra(`(${i + 1}/${conCuit.length})`);
+    for (let i = 0; i < conCuit.length; i += TAMANO_LOTE) {
+      const lote = conCuit.slice(i, i + TAMANO_LOTE);
+      setProgresoBcra(`(${Math.min(i + lote.length, conCuit.length)}/${conCuit.length})`);
 
-      const cuitLimpio = String(cli.cuit_dni || cli.cuit).replace(/\D/g, '');
-      const nuevaSit = await consultarBCRACuit(cuitLimpio);
+      await Promise.all(
+        lote.map(async (cli) => {
+          const cuitLimpio = String(cli.cuit_dni || cli.cuit).replace(/\D/g, '');
+          const nuevaSit = await consultarBCRACuit(cuitLimpio);
 
-      if (nuevaSit !== null) {
-        await supabase.from('clientes').update({ situacion_bcra: nuevaSit }).eq('id', cli.id);
-        evaluados++;
-      } else {
-        errores++;
-      }
-
-      await new Promise((r) => setTimeout(r, 120));
+          if (nuevaSit !== null) {
+            await supabase.from('clientes').update({ situacion_bcra: nuevaSit }).eq('id', cli.id);
+            evaluados++;
+          } else {
+            errores++;
+          }
+        })
+      );
     }
 
     setCargandoBCRA(false);
@@ -460,7 +447,7 @@ export default function ClientesContainer({ supabase }) {
                         {valorCuit || '-'}
                       </td>
                       
-                      {/* SITUACIÓN BCRA (BADGE A LA MACRO + BOTÓN INDIVIDUAL 🔄) */}
+                      {/* SITUACIÓN BCRA */}
                       <td style={{ padding: '0.75rem 1rem', textAlign: 'center' }}>
                         <div style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem' }}>
                           <button
