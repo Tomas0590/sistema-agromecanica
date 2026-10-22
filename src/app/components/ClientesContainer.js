@@ -124,55 +124,82 @@ export default function ClientesContainer({ supabase }) {
     cargarClientes();
   };
 
-  // BOTÓN MASIVO: EVALUACIÓN BCRA (CORREGIDO MANEJO DE STATUS 404 COMO SIT. 1)
+  // BOTÓN MASIVO: EVALUACIÓN BCRA (CON FALLBACK DE PROXIES)
   const corroborarBCRAMasivamente = async () => {
     setCargandoBCRA(true);
+    
+    // Convertir a String por seguridad antes de limpiar
     const conCuit = clientes.filter((c) => {
-      const val = (c.cuit_dni || c.cuit || '').replace(/\D/g, '');
+      const val = String(c.cuit_dni || c.cuit || '').replace(/\D/g, '');
       return val.length === 11;
     });
 
     if (conCuit.length === 0) {
-      alert('No se encontraron clientes con CUIT válido para evaluar en el BCRA.');
+      alert('No se encontraron clientes con CUIT válido de 11 dígitos.');
       setCargandoBCRA(false);
       return;
     }
 
     let evaluados = 0;
-    for (const cli of conCuit) {
-      const cuitLimpio = (cli.cuit_dni || cli.cuit).replace(/\D/g, '');
-      try {
-        const urlBcra = `https://api.bcra.gob.ar/centraldedeudores/v1.0/Deudas/${cuitLimpio}`;
-        const res = await fetch(`https://corsproxy.io/?${encodeURIComponent(urlBcra)}`);
+    let errores = 0;
 
+    for (const cli of conCuit) {
+      const cuitLimpio = String(cli.cuit_dni || cli.cuit).replace(/\D/g, '');
+      const targetUrl = `https://api.bcra.gob.ar/centraldedeudores/v1.0/Deudas/${cuitLimpio}`;
+      
+      let res = null;
+      let exitoFetch = false;
+
+      // Intento 1: Proxy AllOrigins
+      try {
+        res = await fetch(`https://api.allorigins.win/raw?url=${encodeURIComponent(targetUrl)}`);
+        if (res.status === 200 || res.status === 404) exitoFetch = true;
+      } catch (e) {
+        exitoFetch = false;
+      }
+
+      // Intento 2 (Respaldo): CorsProxy
+      if (!exitoFetch) {
+        try {
+          res = await fetch(`https://corsproxy.io/?${encodeURIComponent(targetUrl)}`);
+          if (res.status === 200 || res.status === 404) exitoFetch = true;
+        } catch (e) {
+          exitoFetch = false;
+        }
+      }
+
+      if (exitoFetch && res) {
         let peorSituacion = 1;
 
         if (res.status === 404) {
-          // El BCRA devuelve 404 si el CUIT no tiene deudas en el sistema -> Situación 1 (Normal)
+          // El BCRA devuelve 404 cuando el CUIT no tiene deudas registradas -> Sit 1 (OK)
           peorSituacion = 1;
-          await supabase.from('clientes').update({ situacion_bcra: 1 }).eq('id', cli.id);
-          evaluados++;
         } else if (res.ok) {
-          const data = await res.json();
-          if (data.results && data.results.periodos && data.results.periodos.length > 0) {
-            const deudas = data.results.periodos[0].entidades || [];
-            deudas.forEach((e) => {
-              if (e.situacion > peorSituacion) peorSituacion = e.situacion;
-            });
+          try {
+            const data = await res.json();
+            if (data.results && data.results.periodos && data.results.periodos.length > 0) {
+              const deudas = data.results.periodos[0].entidades || [];
+              deudas.forEach((e) => {
+                if (e.situacion > peorSituacion) peorSituacion = e.situacion;
+              });
+            }
+          } catch (errJson) {
+            peorSituacion = 1;
           }
-          await supabase.from('clientes').update({ situacion_bcra: peorSituacion }).eq('id', cli.id);
-          evaluados++;
         }
 
-        // Pequeña pausa de 150ms para no saturar las consultas
-        await new Promise((r) => setTimeout(r, 150));
-      } catch (e) {
-        console.error(`Error consultando BCRA CUIT ${cuitLimpio}:`, e);
+        await supabase.from('clientes').update({ situacion_bcra: peorSituacion }).eq('id', cli.id);
+        evaluados++;
+      } else {
+        errores++;
       }
+
+      // Pausa de 100ms para evitar saturar conexiones
+      await new Promise((r) => setTimeout(r, 100));
     }
 
     setCargandoBCRA(false);
-    alert(`Evaluación BCRA finalizada. Se procesaron ${evaluados} clientes.`);
+    alert(`Evaluación BCRA finalizada.\n✅ Procesados con éxito: ${evaluados}\n⚠️ No se pudo consultar: ${errores}`);
     cargarClientes();
   };
 
