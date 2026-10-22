@@ -357,7 +357,7 @@ export default function ClientesContainer({ supabase }) {
                       <td style={{ padding: '0.75rem 1rem', textAlign: 'center' }} onClick={(e) => e.stopPropagation()}>
                         {valorCuit ? (
                           <a
-                            href="https://www.lamacro.ar/central-de-deudores/"
+                            href={`https://www.lamacro.ar/central-de-deudores/?cuit=${valorCuit.replace(/\D/g, '')}`
                             target="_blank"
                             rel="noreferrer"
                             style={{ color: '#0284c7', textDecoration: 'none', fontWeight: 'bold', fontSize: '0.8rem' }}
