@@ -80,45 +80,48 @@ export default function ClientesContainer({ supabase }) {
   };
 
   // BOTÓN MASIVO: AUTOCOMPLETAR NOMBRES PENDIENTES
-  const autocompletarNombresPendientes = async () => {
-    setCargandoNombres(true);
-    const pendientes = clientes.filter((c) => {
-      const valorCuit = (c.cuit_dni || c.cuit || '').replace(/\D/g, '');
-      const sinNombre = !c.razon_social || c.razon_social.trim() === '' || c.razon_social.includes('PENDIENTE');
-      return sinNombre && valorCuit.length === 11;
+  const corroborarBCRAMasivamente = async () => {
+    setCargandoBCRA(true);
+    const conCuit = clientes.filter((c) => {
+      const val = (c.cuit_dni || c.cuit || '').replace(/\D/g, '');
+      return val.length === 11;
     });
 
-    if (pendientes.length === 0) {
-      alert('No hay clientes pendientes de nombre que tengan un CUIT válido de 11 dígitos.');
-      setCargandoNombres(false);
+    if (conCuit.length === 0) {
+      alert('No se encontraron clientes con CUIT válido para evaluar en el BCRA.');
+      setCargandoBCRA(false);
       return;
     }
 
-    let actualizados = 0;
-    for (const cli of pendientes) {
+    let evaluados = 0;
+    for (const cli of conCuit) {
       const cuitLimpio = (cli.cuit_dni || cli.cuit).replace(/\D/g, '');
       try {
-        const res = await fetch(`https://afip.republica.dev/cuit/${cuitLimpio}`);
+        // Proxy para evitar bloqueo de CORS en el navegador
+        const urlBcra = `https://api.bcra.gob.ar/centraldedeudores/v1.0/Deudas/${cuitLimpio}`;
+        const res = await fetch(`https://corsproxy.io/?${encodeURIComponent(urlBcra)}`);
+
         if (res.ok) {
           const data = await res.json();
-          const nombreEncontrado = data.razon_social || data.nombre || data.razonSocial;
-          if (nombreEncontrado) {
-            await supabase
-              .from('clientes')
-              .update({
-                razon_social: nombreEncontrado,
-                condicion_iva: data.condicion_iva || cli.condicion_iva,
-                direccion: data.domicilio || cli.direccion
-              })
-              .eq('id', cli.id);
-            actualizados++;
+          let peorSituacion = 1;
+          if (data.results && data.results.periodos && data.results.periodos.length > 0) {
+            const deudas = data.results.periodos[0].entidades || [];
+            deudas.forEach((e) => {
+              if (e.situacion > peorSituacion) peorSituacion = e.situacion;
+            });
           }
+          await supabase.from('clientes').update({ situacion_bcra: peorSituacion }).eq('id', cli.id);
+          evaluados++;
         }
       } catch (e) {
-        console.error(`Error procesando CUIT ${cuitLimpio}:`, e);
+        console.error(`Error consultando BCRA CUIT ${cuitLimpio}:`, e);
       }
     }
 
+    setCargandoBCRA(false);
+    alert(`Evaluación BCRA finalizada. Se procesaron ${evaluados} clientes.`);
+    cargarClientes();
+  };
     setCargandoNombres(false);
     alert(`Proceso finalizado. Se actualizaron ${actualizados} clientes.`);
     cargarClientes();
