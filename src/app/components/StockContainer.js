@@ -10,6 +10,7 @@ export default function StockContainer({ supabase }) {
   const [sku, setSku] = useState('');
   const [descripcion, setDescripcion] = useState('');
   const [categoria, setCategoria] = useState('');
+  const [subcategoria, setSubcategoria] = useState('');
   const [marca, setMarca] = useState('');
   const [ubicacion, setUbicacion] = useState('');
   const [precioCosto, setPrecioCosto] = useState(0);
@@ -28,11 +29,26 @@ export default function StockContainer({ supabase }) {
     if (!error && data) setProductos(data);
   };
 
+  // Obtener sugerencias únicas de categorías y subcategorías
+  const categoriasExistentes = Array.from(
+    new Set(productos.map((p) => p.categoria).filter((cat) => cat && cat.trim() !== ''))
+  ).sort();
+
+  const subcategoriasExistentes = Array.from(
+    new Set(
+      productos
+        .filter((p) => !categoria || (p.categoria || '').toLowerCase() === categoria.toLowerCase())
+        .map((p) => p.subcategoria)
+        .filter((sub) => sub && sub.trim() !== '')
+    )
+  ).sort();
+
   const abrirNuevoProducto = () => {
     setEditingProductoId(null);
     setSku('');
     setDescripcion('');
     setCategoria('');
+    setSubcategoria('');
     setMarca('');
     setUbicacion('');
     setPrecioCosto(0);
@@ -48,6 +64,7 @@ export default function StockContainer({ supabase }) {
     setSku(p.sku || '');
     setDescripcion(p.descripcion || '');
     setCategoria(p.categoria || '');
+    setSubcategoria(p.subcategoria || '');
     setMarca(p.marca || '');
     setUbicacion(p.ubicacion || '');
     setPrecioCosto(p.precio_costo || 0);
@@ -71,6 +88,7 @@ export default function StockContainer({ supabase }) {
       sku,
       descripcion,
       categoria,
+      subcategoria,
       marca,
       ubicacion,
       precio_costo: parseFloat(precioCosto) || 0,
@@ -120,12 +138,15 @@ export default function StockContainer({ supabase }) {
           sku={sku} setSku={setSku}
           descripcion={descripcion} setDescripcion={setDescripcion}
           categoria={categoria} setCategoria={setCategoria}
+          subcategoria={subcategoria} setSubcategoria={setSubcategoria}
           marca={marca} setMarca={setMarca}
           ubicacion={ubicacion} setUbicacion={setUbicacion}
           precioCosto={precioCosto} setPrecioCosto={setPrecioCosto}
           precioVenta={precioVenta} setPrecioVenta={setPrecioVenta}
           stockActual={stockActual} setStockActual={setStockActual}
           stockMinimo={stockMinimo} setStockMinimo={setStockMinimo}
+          categoriasExistentes={categoriasExistentes}
+          subcategoriasExistentes={subcategoriasExistentes}
           mensajeProducto={mensajeProducto}
           onGuardar={guardarProducto}
           onCancelar={cancelarProducto}
