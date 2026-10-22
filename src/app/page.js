@@ -8,7 +8,7 @@ import FormCliente from './components/FormCliente';
 import TablaClientes from './components/TablaClientes';
 import ModalCliente from './components/ModalCliente';
 
-const SUPABASE_URL = '[https://tqfpcogdvhtvvhdqewdg.supabase.co](https://tqfpcogdvhtvvhdqewdg.supabase.co)';
+const SUPABASE_URL = 'https://tqfpcogdvhtvvhdqewdg.supabase.co';
 const SUPABASE_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'sb_publishable_MchMROFkf12BgkCahzrC5w_qAlaGXKr';
 const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 
@@ -164,8 +164,8 @@ export default function Home() {
       let chequesRechazados = 0;
 
       try {
-        const urlDeudas = `[https://api.bcra.gob.ar/centraldedeudores/v1.0/Deudas/$](https://api.bcra.gob.ar/centraldedeudores/v1.0/Deudas/$){cleanCuit}`;
-        const urlCheques = `[https://api.bcra.gob.ar/centraldedeudores/v1.0/Deudas/ChequesRechazados/$](https://api.bcra.gob.ar/centraldedeudores/v1.0/Deudas/ChequesRechazados/$){cleanCuit}`;
+        const urlDeudas = `https://api.bcra.gob.ar/centraldedeudores/v1.0/Deudas/${cleanCuit}`;
+        const urlCheques = `https://api.bcra.gob.ar/centraldedeudores/v1.0/Deudas/ChequesRechazados/${cleanCuit}`;
 
         const [resDeudas, resCheques] = await Promise.allSettled([
           fetch(urlDeudas),
@@ -233,8 +233,8 @@ export default function Home() {
     setLoadingBcraId(clienteId);
 
     try {
-      const urlDeudas = `[https://api.bcra.gob.ar/centraldedeudores/v1.0/Deudas/$](https://api.bcra.gob.ar/centraldedeudores/v1.0/Deudas/$){cleanCuit}`;
-      const urlCheques = `[https://api.bcra.gob.ar/centraldedeudores/v1.0/Deudas/ChequesRechazados/$](https://api.bcra.gob.ar/centraldedeudores/v1.0/Deudas/ChequesRechazados/$){cleanCuit}`;
+      const urlDeudas = `https://api.bcra.gob.ar/centraldedeudores/v1.0/Deudas/${cleanCuit}`;
+      const urlCheques = `https://api.bcra.gob.ar/centraldedeudores/v1.0/Deudas/ChequesRechazados/${cleanCuit}`;
 
       const [resDeudas, resCheques] = await Promise.allSettled([
         fetch(urlDeudas),
@@ -393,7 +393,7 @@ export default function Home() {
 
   return (
     <div style={{ minHeight: '100vh', backgroundColor: '#0f172a', color: '#f8fafc', fontFamily: 'sans-serif' }}>
-      <Navbar activeTab="{activeTab}" onLogout="{handleLogout}" setActiveTab="{setActiveTab}"/>
+      <Navbar activeTab={activeTab} setActiveTab={setActiveTab} onLogout={handleLogout} />
 
       <main style={{ padding: '2rem', maxWidth: '1200px', margin: '0 auto' }}>
         
@@ -488,12 +488,34 @@ export default function Home() {
 
             {/* FORMULARIO FLOTANTE CLIENTE */}
             {mostrarModalForm && (
-              <FormCliente condicionIva="{condicionIva}" cuit="{cuit}" direccion="{direccion}" editingId="{editingId}" email="{email}" loadingCuit="{loadingCuit}" mensajeCliente="{mensajeCliente}" onBuscarCuit="{buscarCuit}" onCancelarEdicion="{cancelarEdicion}" onGuardar="{guardarCliente}" razonSocial="{razonSocial}" setCondicionIva="{setCondicionIva}" setCuit="{setCuit}" setDireccion="{setDireccion}" setEmail="{setEmail}" setRazonSocial="{setRazonSocial}" setTelefono="{setTelefono}" telefono="{telefono}"/>
+              <FormCliente 
+                editingId={editingId}
+                cuit={cuit} setCuit={setCuit}
+                razonSocial={razonSocial} setRazonSocial={setRazonSocial}
+                condicionIva={condicionIva} setCondicionIva={setCondicionIva}
+                email={email} setEmail={setEmail}
+                telefono={telefono} setTelefono={setTelefono}
+                direccion={direccion} setDireccion={setDireccion}
+                loadingCuit={loadingCuit}
+                mensajeCliente={mensajeCliente}
+                onBuscarCuit={buscarCuit}
+                onGuardar={guardarCliente}
+                onCancelarEdicion={cancelarEdicion}
+              />
             )}
 
-            <TablaClientes clientes="{clientes}" loadingBcraId="{loadingBcraId}" onConsultarBcra="{consultarBcra}" onPrepararEdicion="{prepararEdicion}" onSelectCliente="{setClienteSeleccionado}" resultadosBcra="{resultadosBcra}"/>
+            <TablaClientes 
+              clientes={clientes}
+              resultadosBcra={resultadosBcra}
+              loadingBcraId={loadingBcraId}
+              onConsultarBcra={consultarBcra}
+              onPrepararEdicion={prepararEdicion}
+              onSelectCliente={setClienteSeleccionado}
+            />
 
-            <ModalCliente cliente="{clienteSeleccionado}" onClose="{()"> setClienteSeleccionado(null)}
+            <ModalCliente 
+              cliente={clienteSeleccionado}
+              onClose={() => setClienteSeleccionado(null)}
               onPrepararEdicion={prepararEdicion}
               onBorrarCliente={borrarCliente}
             />
