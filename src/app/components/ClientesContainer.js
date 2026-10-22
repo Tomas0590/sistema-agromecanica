@@ -8,9 +8,9 @@ export default function ClientesContainer({ supabase }) {
   const [ordenColumna, setOrdenColumna] = useState('razon_social');
   const [ordenAsc, setOrdenAsc] = useState(true);
 
-  // Estado del formulario
+  // Formulario
   const [razonSocial, setRazonSocial] = useState('');
-  const [cuit, setCuit] = useState('');
+  const [cuitDni, setCuitDni] = useState('');
   const [condicionIva, setCondicionIva] = useState('Responsable Inscripto');
   const [localidad, setLocalidad] = useState('');
   const [mostrarModal, setMostrarModal] = useState(false);
@@ -27,7 +27,7 @@ export default function ClientesContainer({ supabase }) {
       .order('razon_social', { ascending: true });
 
     if (error) {
-      console.error('Error al cargar clientes de Supabase:', error.message);
+      console.error('Error Supabase:', error);
     } else if (data) {
       setClientes(data);
     }
@@ -44,9 +44,9 @@ export default function ClientesContainer({ supabase }) {
 
     const payload = {
       razon_social: razonSocial.trim(),
-      cuit: cuit.trim(),
+      cuit_dni: cuitDni.trim(),
       condicion_iva: condicionIva,
-      localidad: localidad.trim()
+      direccion: localidad.trim()
     };
 
     const { error } = await supabase.from('clientes').insert([payload]);
@@ -55,7 +55,7 @@ export default function ClientesContainer({ supabase }) {
       setMensajeForm(`Error al guardar: ${error.message}`);
     } else {
       setRazonSocial('');
-      setCuit('');
+      setCuitDni('');
       setLocalidad('');
       setMostrarModal(false);
       cargarClientes();
@@ -80,10 +80,11 @@ export default function ClientesContainer({ supabase }) {
   const clientesFiltrados = clientes
     .filter((c) => {
       const termino = busqueda.toLowerCase();
+      const cuitValor = c.cuit_dni || c.cuit || '';
       return (
         (c.razon_social || '').toLowerCase().includes(termino) ||
-        (c.cuit || '').includes(termino) ||
-        (c.localidad || '').toLowerCase().includes(termino)
+        cuitValor.includes(termino) ||
+        (c.direccion || c.localidad || '').toLowerCase().includes(termino)
       );
     })
     .sort((a, b) => {
@@ -99,7 +100,7 @@ export default function ClientesContainer({ supabase }) {
 
   return (
     <div>
-      {/* CABECERA DE CLIENTES */}
+      {/* CABECERA */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem', flexWrap: 'wrap', gap: '1rem' }}>
         <div>
           <h2 style={{ color: '#2b2927', margin: 0, fontSize: '1.35rem', fontWeight: '800' }}>
@@ -118,10 +119,10 @@ export default function ClientesContainer({ supabase }) {
         </button>
       </div>
 
-      {/* CONTENEDOR DE TABLA EN BEIGE CÁLIDO */}
+      {/* CONTENEDOR EN BEIGE CÁLIDO */}
       <div style={{ backgroundColor: '#fcfbf9', borderRadius: '10px', border: '1px solid #e5e0d8', boxShadow: '0 2px 5px rgba(0,0,0,0.03)', padding: '1.25rem' }}>
         
-        {/* BÚSQUEDA Y CONTADOR */}
+        {/* BUSCADOR */}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem', flexWrap: 'wrap', gap: '1rem' }}>
           <input
             type="text"
@@ -143,15 +144,9 @@ export default function ClientesContainer({ supabase }) {
                 <th onClick={() => cambiarOrden('razon_social')} style={{ padding: '0.75rem 1rem', cursor: 'pointer', userSelect: 'none' }}>
                   Razón Social {ordenColumna === 'razon_social' ? (ordenAsc ? '▲' : '▼') : '⇅'}
                 </th>
-                <th onClick={() => cambiarOrden('cuit')} style={{ padding: '0.75rem 1rem', cursor: 'pointer', userSelect: 'none' }}>
-                  CUIT {ordenColumna === 'cuit' ? (ordenAsc ? '▲' : '▼') : '⇅'}
-                </th>
-                <th onClick={() => cambiarOrden('condicion_iva')} style={{ padding: '0.75rem 1rem', cursor: 'pointer', userSelect: 'none' }}>
-                  Cond. IVA {ordenColumna === 'condicion_iva' ? (ordenAsc ? '▲' : '▼') : '⇅'}
-                </th>
-                <th onClick={() => cambiarOrden('localidad')} style={{ padding: '0.75rem 1rem', cursor: 'pointer', userSelect: 'none' }}>
-                  Localidad {ordenColumna === 'localidad' ? (ordenAsc ? '▲' : '▼') : '⇅'}
-                </th>
+                <th style={{ padding: '0.75rem 1rem' }}>CUIT / DNI</th>
+                <th style={{ padding: '0.75rem 1rem' }}>Cond. IVA</th>
+                <th style={{ padding: '0.75rem 1rem' }}>Localidad / Dir</th>
                 <th style={{ padding: '0.75rem 1rem', textAlign: 'center' }}>Consulta BCRA</th>
                 <th style={{ padding: '0.75rem 1rem', textAlign: 'center' }}>Acciones</th>
               </tr>
@@ -160,53 +155,57 @@ export default function ClientesContainer({ supabase }) {
               {clientesFiltrados.length === 0 ? (
                 <tr>
                   <td colSpan="6" style={{ textAlign: 'center', padding: '2.5rem', color: '#a8a29e' }}>
-                    No hay clientes registrados en el sistema.
+                    No hay clientes para mostrar.
                   </td>
                 </tr>
               ) : (
-                clientesFiltrados.map((c) => (
-                  <tr key={c.id} style={{ borderBottom: '1px solid #f0ebe1' }}>
-                    <td style={{ padding: '0.75rem 1rem', fontWeight: 'bold', color: '#1c1917' }}>
-                      {c.razon_social}
-                    </td>
-                    <td style={{ padding: '0.75rem 1rem', color: '#44403c', fontFamily: 'monospace' }}>
-                      {c.cuit || '-'}
-                    </td>
-                    <td style={{ padding: '0.75rem 1rem', color: '#57534e' }}>
-                      {c.condicion_iva || '-'}
-                    </td>
-                    <td style={{ padding: '0.75rem 1rem', color: '#57534e' }}>
-                      {c.localidad || '-'}
-                    </td>
-                    <td style={{ padding: '0.75rem 1rem', textAlign: 'center' }}>
-                      {c.cuit ? (
-                        <a
-                          href="https://www.lamacro.ar/central-de-deudores/"
-                          target="_blank"
-                          rel="noreferrer"
-                          style={{ color: '#0284c7', textDecoration: 'none', fontWeight: 'bold', fontSize: '0.8rem' }}
+                clientesFiltrados.map((c) => {
+                  const cuitVal = c.cuit_dni || c.cuit || '';
+
+                  return (
+                    <tr key={c.id} style={{ borderBottom: '1px solid #f0ebe1' }}>
+                      <td style={{ padding: '0.75rem 1rem', fontWeight: 'bold', color: '#1c1917' }}>
+                        {c.razon_social}
+                      </td>
+                      <td style={{ padding: '0.75rem 1rem', color: '#44403c', fontFamily: 'monospace' }}>
+                        {cuitVal || '-'}
+                      </td>
+                      <td style={{ padding: '0.75rem 1rem', color: '#57534e' }}>
+                        {c.condicion_iva || '-'}
+                      </td>
+                      <td style={{ padding: '0.75rem 1rem', color: '#57534e' }}>
+                        {c.direccion || c.localidad || '-'}
+                      </td>
+                      <td style={{ padding: '0.75rem 1rem', textAlign: 'center' }}>
+                        {cuitVal ? (
+                          <a
+                            href="[https://www.lamacro.ar/central-de-deudores/](https://www.lamacro.ar/central-de-deudores/)"
+                            target="_blank"
+                            rel="noreferrer"
+                            style={{ color: '#0284c7', textDecoration: 'none', fontWeight: 'bold', fontSize: '0.8rem' }}
+                          >
+                            🔍 Consultar BCRA
+                          </a>
+                        ) : '-'}
+                      </td>
+                      <td style={{ padding: '0.75rem 1rem', textAlign: 'center' }}>
+                        <button
+                          onClick={() => borrarCliente(c.id)}
+                          style={{ backgroundColor: '#fef2f2', border: '1px solid #fecaca', color: '#dc2626', padding: '0.3rem 0.6rem', borderRadius: '6px', cursor: 'pointer', fontSize: '0.75rem', fontWeight: 'bold' }}
                         >
-                          🔍 Consultar BCRA
-                        </a>
-                      ) : '-'}
-                    </td>
-                    <td style={{ padding: '0.75rem 1rem', textAlign: 'center' }}>
-                      <button
-                        onClick={() => borrarCliente(c.id)}
-                        style={{ backgroundColor: '#fef2f2', border: '1px solid #fecaca', color: '#dc2626', padding: '0.3rem 0.6rem', borderRadius: '6px', cursor: 'pointer', fontSize: '0.75rem', fontWeight: 'bold' }}
-                      >
-                        🗑️
-                      </button>
-                    </td>
-                  </tr>
-                ))
+                          🗑️
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })
               )}
             </tbody>
           </table>
         </div>
       </div>
 
-      {/* MODAL NUEVO CLIENTE */}
+      {/* MODAL */}
       {mostrarModal && (
         <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.4)', backdropFilter: 'blur(2px)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}>
           <div style={{ background: '#fcfbf9', border: '1px solid #e5e0d8', borderRadius: '12px', width: '100%', maxWidth: '500px', padding: '1.5rem', color: '#2b2927' }}>
@@ -232,12 +231,12 @@ export default function ClientesContainer({ supabase }) {
               </div>
 
               <div>
-                <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 'bold', color: '#57534e', marginBottom: '0.2rem' }}>CUIT (sin guiones)</label>
+                <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 'bold', color: '#57534e', marginBottom: '0.2rem' }}>CUIT / DNI</label>
                 <input
                   type="text"
                   placeholder="Ej: 20123456789"
-                  value={cuit}
-                  onChange={(e) => setCuit(e.target.value)}
+                  value={cuitDni}
+                  onChange={(e) => setCuitDni(e.target.value)}
                   style={{ width: '100%', padding: '0.6rem', borderRadius: '6px', border: '1px solid #dcd5c9', background: '#fff', boxSizing: 'border-box' }}
                 />
               </div>
@@ -257,7 +256,7 @@ export default function ClientesContainer({ supabase }) {
               </div>
 
               <div>
-                <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 'bold', color: '#57534e', marginBottom: '0.2rem' }}>Localidad</label>
+                <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 'bold', color: '#57534e', marginBottom: '0.2rem' }}>Localidad / Dirección</label>
                 <input
                   type="text"
                   placeholder="Ej: Carhué"
