@@ -13,42 +13,43 @@ export default function Home() {
   const [activeTab, setActiveTab] = useState('stock');
 
   return (
-    <main style={{ minHeight: '100vh', backgroundColor: '#f8fafc', color: '#1e293b', fontFamily: 'system-ui, sans-serif' }}>
-      {/* BARRA SUPERIOR / HEADER CON LOGO */}
-      <header style={{ backgroundColor: '#ffffff', borderBottom: '2px solid #e2e8f0', padding: '0.75rem 1.5rem', boxShadow: '0 1px 3px rgba(0,0,0,0.05)' }}>
+    <main style={{ minHeight: '100vh', backgroundColor: '#f4f3ed', color: '#1c1917', fontFamily: 'system-ui, sans-serif' }}>
+      {/* HEADER SUPERIOR CON LOGO */}
+      <header style={{ backgroundColor: '#faf9f5', borderBottom: '2px solid #e5e3da', padding: '0.85rem 1.5rem', boxShadow: '0 1px 3px rgba(0,0,0,0.04)' }}>
         <div style={{ maxWidth: '1200px', margin: '0 auto', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '1rem' }}>
           
           {/* LOGO E IDENTIDAD */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.85rem' }}>
             <img 
               src="/logo.png" 
-              alt="Agromecánica de Ariel Raggi" 
-              style={{ height: '55px', objectFit: 'contain' }}
+              alt="Agromecánica" 
+              style={{ height: '52px', objectFit: 'contain' }}
+              onError={(e) => { e.target.style.display = 'none'; }} 
             />
             <div>
-              <h1 style={{ margin: 0, fontSize: '1.25rem', fontWeight: '800', color: '#dc2626', letterSpacing: '-0.02em' }}>
+              <h1 style={{ margin: 0, fontSize: '1.35rem', fontWeight: '900', color: '#dc2626', letterSpacing: '-0.02em', lineHeight: 1 }}>
                 AGROMECÁNICA
               </h1>
-              <span style={{ fontSize: '0.8rem', color: '#64748b', fontWeight: '600' }}>
-                Gestión Integral & Stock
+              <span style={{ fontSize: '0.8rem', color: '#57534e', fontWeight: '700' }}>
+                de Ariel Raggi
               </span>
             </div>
           </div>
 
-          {/* NAVEGACIÓN ENTRE MÓDULOS */}
-          <nav style={{ display: 'flex', gap: '0.5rem', backgroundColor: '#f1f5f9', padding: '0.35rem', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+          {/* SOLAPAS DE NAVEGACIÓN */}
+          <nav style={{ display: 'flex', gap: '0.4rem', backgroundColor: '#e7e5dd', padding: '0.3rem', borderRadius: '8px', border: '1px solid #d6d3d1' }}>
             <button
               onClick={() => setActiveTab('stock')}
               style={{
-                padding: '0.5rem 1.25rem',
+                padding: '0.55rem 1.25rem',
                 borderRadius: '6px',
                 border: 'none',
                 fontWeight: '700',
                 fontSize: '0.875rem',
                 cursor: 'pointer',
-                transition: 'all 0.2s',
+                transition: 'all 0.15s',
                 backgroundColor: activeTab === 'stock' ? '#15803d' : 'transparent',
-                color: activeTab === 'stock' ? '#ffffff' : '#64748b',
+                color: activeTab === 'stock' ? '#ffffff' : '#57534e',
                 boxShadow: activeTab === 'stock' ? '0 2px 4px rgba(0,0,0,0.1)' : 'none'
               }}
             >
@@ -58,15 +59,15 @@ export default function Home() {
             <button
               onClick={() => setActiveTab('clientes')}
               style={{
-                padding: '0.5rem 1.25rem',
+                padding: '0.55rem 1.25rem',
                 borderRadius: '6px',
                 border: 'none',
                 fontWeight: '700',
                 fontSize: '0.875rem',
                 cursor: 'pointer',
-                transition: 'all 0.2s',
+                transition: 'all 0.15s',
                 backgroundColor: activeTab === 'clientes' ? '#15803d' : 'transparent',
-                color: activeTab === 'clientes' ? '#ffffff' : '#64748b',
+                color: activeTab === 'clientes' ? '#ffffff' : '#57534e',
                 boxShadow: activeTab === 'clientes' ? '0 2px 4px rgba(0,0,0,0.1)' : 'none'
               }}
             >
