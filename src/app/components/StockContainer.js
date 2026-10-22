@@ -3,21 +3,12 @@
 import { useState, useEffect } from 'react';
 import FormProducto from './FormProducto';
 import TablaStock from './TablaStock';
-
-// LISTA BASE CON CATEGORÍAS EN UNA SOLA PALABRA
-const CATEGORIAS_PREARMADAS = {
-  'FILTROS': ['Aceite', 'Aire', 'Combustible', 'Habitáculo', 'Hidráulico'],
-  'LUBRICANTES': ['Grasas', 'Refrigerantes', 'Líquidos de Freno', 'Aditivos'],
-  'CORREAS': ['En V', 'Multicanal', 'Planas', 'Variador'],
-  'MANGUERAS': ['Hidráulicas', 'Riego', 'Combustible', 'Prensa'],
-  'RODAMIENTOS': ['Bolas', 'Cónicos', 'Retenes', 'Crapodinas'],
-  'ACEITES': ['Motor', 'Transmisión', 'Hidráulico', 'Diferencial'],
-  'ACCESORIOS': ['Picos', 'Acoples', 'Abrazaderas', 'Bulonería'],
-  'PULVERIZACION': ['Pastillas', 'Portapicos', 'Bombas', 'Filtros de Línea']
-};
+import ModalCategorias from './ModalCategorias';
 
 export default function StockContainer({ supabase }) {
   const [productos, setProductos] = useState([]);
+  const [categoriasLista, setCategoriasLista] = useState([]);
+
   const [editingProductoId, setEditingProductoId] = useState(null);
   const [sku, setSku] = useState('');
   const [descripcion, setDescripcion] = useState('');
@@ -29,11 +20,14 @@ export default function StockContainer({ supabase }) {
   const [precioVenta, setPrecioVenta] = useState(0);
   const [stockActual, setStockActual] = useState(0);
   const [stockMinimo, setStockMinimo] = useState(0);
+
   const [mostrarModalProducto, setMostrarModalProducto] = useState(false);
+  const [mostrarModalCategorias, setMostrarModalCategorias] = useState(false);
   const [mensajeProducto, setMensajeProducto] = useState('');
 
   useEffect(() => {
     cargarProductos();
+    cargarCategorias();
   }, []);
 
   const cargarProductos = async () => {
@@ -41,23 +35,37 @@ export default function StockContainer({ supabase }) {
     if (!error && data) setProductos(data);
   };
 
-  // Combinar categorías prearmadas con las que existan en la BD
+  const cargarCategorias = async () => {
+    const { data, error } = await supabase.from('categorias').select('*').order('nombre', { ascending: true });
+    if (!error && data) setCategoriasLista(data);
+  };
+
+  const agregarCategoriaBD = async (nombre, padre) => {
+    const { error } = await supabase.from('categorias').insert([{ nombre, padre }]);
+    if (!error) cargarCategorias();
+  };
+
+  const borrarCategoriaBD = async (id) => {
+    const { error } = await supabase.from('categorias').delete().eq('id', id);
+    if (!error) cargarCategorias();
+  };
+
+  // Extraer las listas para pasarlas a los inputs con datalist
   const categoriasExistentes = Array.from(
     new Set([
-      ...Object.keys(CATEGORIAS_PREARMADAS),
+      ...categoriasLista.filter((c) => !c.padre).map((c) => c.nombre),
       ...productos.map((p) => (p.categoria || '').toUpperCase()).filter((c) => c && c.trim() !== '')
     ])
   ).sort();
 
-  // Combinar subcategorías según categoría elegida + BD
-  const subcategoriasBase = CATEGORIAS_PREARMADAS[categoria?.toUpperCase()] || [];
-  const subcategoriasGuardadas = productos
-    .filter((p) => !categoria || (p.categoria || '').toLowerCase() === categoria.toLowerCase())
-    .map((p) => p.subcategoria)
-    .filter((s) => s && s.trim() !== '');
-
   const subcategoriasExistentes = Array.from(
-    new Set([...subcategoriasBase, ...subcategoriasGuardadas])
+    new Set([
+      ...categoriasLista.filter((c) => c.padre && (!categoria || c.padre.toLowerCase() === categoria.toLowerCase())).map((c) => c.nombre),
+      ...productos
+        .filter((p) => !categoria || (p.categoria || '').toLowerCase() === categoria.toLowerCase())
+        .map((p) => p.subcategoria)
+        .filter((s) => s && s.trim() !== '')
+    ])
   ).sort();
 
   const abrirNuevoProducto = () => {
@@ -141,13 +149,32 @@ export default function StockContainer({ supabase }) {
     <div>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem', flexWrap: 'wrap', gap: '1rem' }}>
         <h2 style={{ color: '#cbd5e1', margin: 0 }}>Catálogo de Inventario y Stock</h2>
-        <button 
-          onClick={abrirNuevoProducto}
-          style={{ background: '#16a34a', color: '#fff', border: 'none', padding: '0.5rem 1rem', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold', fontSize: '0.85rem' }}
-        >
-          ➕ Nuevo Producto
-        </button>
+        
+        <div style={{ display: 'flex', gap: '0.5rem' }}>
+          <button 
+            onClick={() => setMostrarModalCategorias(true)}
+            style={{ background: '#334155', color: '#f59e0b', border: '1px solid #475569', padding: '0.5rem 1rem', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold', fontSize: '0.85rem' }}
+          >
+            ⚙️ Gestionar Rubros
+          </button>
+          
+          <button 
+            onClick={abrirNuevoProducto}
+            style={{ background: '#16a34a', color: '#fff', border: 'none', padding: '0.5rem 1rem', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold', fontSize: '0.85rem' }}
+          >
+            ➕ Nuevo Producto
+          </button>
+        </div>
       </div>
+
+      {mostrarModalCategorias && (
+        <ModalCategorias
+          categoriasLista={categoriasLista}
+          onAgregarCategoria={agregarCategoriaBD}
+          onBorrarCategoria={borrarCategoriaBD}
+          onClose={() => setMostrarModalCategorias(false)}
+        />
+      )}
 
       {mostrarModalProducto && (
         <FormProducto 
