@@ -300,7 +300,7 @@ export default function ClientesContainer({ supabase }) {
           </span>
         </div>
 
-        {/* TABLA LIMPIA (SIN CONDICIÓN IVA NI CONTACTO) */}
+        {/* TABLA DE CLIENTES */}
         <div style={{ overflowX: 'auto' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '0.875rem' }}>
             <thead>
@@ -357,7 +357,7 @@ export default function ClientesContainer({ supabase }) {
                       <td style={{ padding: '0.75rem 1rem', textAlign: 'center' }} onClick={(e) => e.stopPropagation()}>
                         {cuitLimpio ? (
                           <a
-                            href={`https://www.lamacro.ar/central-de-deudores/?cuit=${cuitLimpio}`}
+                            href={`https://www.lamacro.ar/central-de-deudores/${cuitLimpio}`}
                             target="_blank"
                             rel="noreferrer"
                             style={{ color: '#0284c7', textDecoration: 'none', fontWeight: 'bold', fontSize: '0.8rem' }}
@@ -466,7 +466,7 @@ export default function ClientesContainer({ supabase }) {
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               {(clienteDetalle.cuit_dni || clienteDetalle.cuit) ? (
                 <a
-                  href={`https://www.lamacro.ar/central-de-deudores/?cuit=${(clienteDetalle.cuit_dni || clienteDetalle.cuit || '').replace(/\D/g, '')}`}
+                  href={`https://www.lamacro.ar/central-de-deudores/${(clienteDetalle.cuit_dni || clienteDetalle.cuit || '').replace(/\D/g, '')}`}
                   target="_blank"
                   rel="noreferrer"
                   style={{ color: '#0284c7', textDecoration: 'none', fontWeight: 'bold', fontSize: '0.875rem' }}
