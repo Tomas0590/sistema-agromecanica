@@ -13,7 +13,7 @@ export default function ClientesContainer({ supabase }) {
   const [cargandoNombres, setCargandoNombres] = useState(false);
   const [buscandoCuitApi, setBuscandoCuitApi] = useState(false);
 
-  // Cliente seleccionado para ver la Ficha Completa
+  // Cliente seleccionado para la Ficha Completa
   const [clienteDetalle, setClienteDetalle] = useState(null);
 
   // Formulario de alta de nuevo cliente
@@ -48,7 +48,7 @@ export default function ClientesContainer({ supabase }) {
     }
   };
 
-  // AUTOCOMPLETAR RAZÓN SOCIAL AL INGRESAR CUIT (11 DÍGITOS) EN NUEVO CLIENTE
+  // AUTOCOMPLETAR RAZÓN SOCIAL AL INGRESAR CUIT (11 DÍGITOS)
   const buscarCuitEnPadron = async (cuitIngresado) => {
     const cuitLimpio = cuitIngresado.replace(/\D/g, '');
     if (cuitLimpio.length !== 11) return;
@@ -80,54 +80,51 @@ export default function ClientesContainer({ supabase }) {
   };
 
   // BOTÓN MASIVO: AUTOCOMPLETAR NOMBRES PENDIENTES
-  const corroborarBCRAMasivamente = async () => {
-    setCargandoBCRA(true);
-    const conCuit = clientes.filter((c) => {
-      const val = (c.cuit_dni || c.cuit || '').replace(/\D/g, '');
-      return val.length === 11;
+  const autocompletarNombresPendientes = async () => {
+    setCargandoNombres(true);
+    const pendientes = clientes.filter((c) => {
+      const valorCuit = (c.cuit_dni || c.cuit || '').replace(/\D/g, '');
+      const sinNombre = !c.razon_social || c.razon_social.trim() === '' || c.razon_social.includes('PENDIENTE');
+      return sinNombre && valorCuit.length === 11;
     });
 
-    if (conCuit.length === 0) {
-      alert('No se encontraron clientes con CUIT válido para evaluar en el BCRA.');
-      setCargandoBCRA(false);
+    if (pendientes.length === 0) {
+      alert('No hay clientes pendientes de nombre que tengan un CUIT válido de 11 dígitos.');
+      setCargandoNombres(false);
       return;
     }
 
-    let evaluados = 0;
-    for (const cli of conCuit) {
+    let actualizados = 0;
+    for (const cli of pendientes) {
       const cuitLimpio = (cli.cuit_dni || cli.cuit).replace(/\D/g, '');
       try {
-        // Proxy para evitar bloqueo de CORS en el navegador
-        const urlBcra = `https://api.bcra.gob.ar/centraldedeudores/v1.0/Deudas/${cuitLimpio}`;
-        const res = await fetch(`https://corsproxy.io/?${encodeURIComponent(urlBcra)}`);
-
+        const res = await fetch(`https://afip.republica.dev/cuit/${cuitLimpio}`);
         if (res.ok) {
           const data = await res.json();
-          let peorSituacion = 1;
-          if (data.results && data.results.periodos && data.results.periodos.length > 0) {
-            const deudas = data.results.periodos[0].entidades || [];
-            deudas.forEach((e) => {
-              if (e.situacion > peorSituacion) peorSituacion = e.situacion;
-            });
+          const nombreEncontrado = data.razon_social || data.nombre || data.razonSocial;
+          if (nombreEncontrado) {
+            await supabase
+              .from('clientes')
+              .update({
+                razon_social: nombreEncontrado,
+                condicion_iva: data.condicion_iva || cli.condicion_iva,
+                direccion: data.domicilio || cli.direccion
+              })
+              .eq('id', cli.id);
+            actualizados++;
           }
-          await supabase.from('clientes').update({ situacion_bcra: peorSituacion }).eq('id', cli.id);
-          evaluados++;
         }
       } catch (e) {
-        console.error(`Error consultando BCRA CUIT ${cuitLimpio}:`, e);
+        console.error(`Error procesando CUIT ${cuitLimpio}:`, e);
       }
     }
 
-    setCargandoBCRA(false);
-    alert(`Evaluación BCRA finalizada. Se procesaron ${evaluados} clientes.`);
-    cargarClientes();
-  };
     setCargandoNombres(false);
     alert(`Proceso finalizado. Se actualizaron ${actualizados} clientes.`);
     cargarClientes();
   };
 
-  // BOTÓN MASIVO: EVALUACIÓN BCRA
+  // BOTÓN MASIVO: EVALUACIÓN BCRA (CON PROXY PARA CORTAR EL BLOQUEO CORS)
   const corroborarBCRAMasivamente = async () => {
     setCargandoBCRA(true);
     const conCuit = clientes.filter((c) => {
@@ -145,7 +142,9 @@ export default function ClientesContainer({ supabase }) {
     for (const cli of conCuit) {
       const cuitLimpio = (cli.cuit_dni || cli.cuit).replace(/\D/g, '');
       try {
-        const res = await fetch(`https://api.bcra.gob.ar/centraldedeudores/v1.0/Deudas/${cuitLimpio}`);
+        const urlBcra = `https://api.bcra.gob.ar/centraldedeudores/v1.0/Deudas/${cuitLimpio}`;
+        const res = await fetch(`https://corsproxy.io/?${encodeURIComponent(urlBcra)}`);
+
         if (res.ok) {
           const data = await res.json();
           let peorSituacion = 1;
@@ -247,7 +246,7 @@ export default function ClientesContainer({ supabase }) {
 
   return (
     <div>
-      {/* CABECERA CON TÍTULO Y BOTONES DE ACCIÓN */}
+      {/* CABECERA */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem', flexWrap: 'wrap', gap: '0.75rem' }}>
         <div>
           <h2 style={{ color: '#2b2927', margin: 0, fontSize: '1.35rem', fontWeight: '800' }}>
@@ -301,7 +300,7 @@ export default function ClientesContainer({ supabase }) {
           </span>
         </div>
 
-        {/* TABLA LIMPIA (SIN CONTACTO NI CONDICIÓN IVA) */}
+        {/* TABLA LIMPIA (SIN CONDICIÓN IVA NI CONTACTO) */}
         <div style={{ overflowX: 'auto' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '0.875rem' }}>
             <thead>
@@ -326,6 +325,7 @@ export default function ClientesContainer({ supabase }) {
                 clientesFiltrados.map((c) => {
                   const valorCuit = c.cuit_dni || c.cuit || '';
                   const sitBcra = c.situacion_bcra || 1;
+                  const cuitLimpio = valorCuit.replace(/\D/g, '');
 
                   return (
                     <tr 
@@ -355,9 +355,9 @@ export default function ClientesContainer({ supabase }) {
                         </span>
                       </td>
                       <td style={{ padding: '0.75rem 1rem', textAlign: 'center' }} onClick={(e) => e.stopPropagation()}>
-                        {valorCuit ? (
+                        {cuitLimpio ? (
                           <a
-                            href={`https://www.lamacro.ar/central-de-deudores/?cuit=${valorCuit.replace(/\D/g, '')}`
+                            href={`https://www.lamacro.ar/central-de-deudores/?cuit=${cuitLimpio}`}
                             target="_blank"
                             rel="noreferrer"
                             style={{ color: '#0284c7', textDecoration: 'none', fontWeight: 'bold', fontSize: '0.8rem' }}
@@ -463,10 +463,10 @@ export default function ClientesContainer({ supabase }) {
             </div>
 
             {/* BOTONES DE ACCIÓN DEL MODAL */}
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', pt: '0.5rem' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               {(clienteDetalle.cuit_dni || clienteDetalle.cuit) ? (
                 <a
-                  href="https://www.lamacro.ar/central-de-deudores/"
+                  href={`https://www.lamacro.ar/central-de-deudores/?cuit=${(clienteDetalle.cuit_dni || clienteDetalle.cuit || '').replace(/\D/g, '')}`}
                   target="_blank"
                   rel="noreferrer"
                   style={{ color: '#0284c7', textDecoration: 'none', fontWeight: 'bold', fontSize: '0.875rem' }}
