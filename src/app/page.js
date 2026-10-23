@@ -1,11 +1,15 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
+import { createClient } from '@supabase/supabase-js';
 import ClientesContainer from './components/ClientesContainer';
 
+// Inicialización con variables de entorno públicas de Vercel
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+const supabase = createClient(supabaseUrl, supabaseAnonKey);
+
 export default function Home() {
-  const supabase = createClientComponentClient();
   const [session, setSession] = useState(null);
   const [cargandoSesion, setCargandoSesion] = useState(true);
 
@@ -16,23 +20,20 @@ export default function Home() {
   const [procesandoLogin, setProcesandoLogin] = useState(false);
 
   useEffect(() => {
-    // Verificar sesión inicial
-    const obtenerSesion = async () => {
-      const { data: { session } } = await supabase.auth.getSession();
+    // Obtener sesión activa al cargar
+    supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session);
       setCargandoSesion(false);
-    };
+    });
 
-    obtenerSesion();
-
-    // Escuchar cambios de autenticación
+    // Escuchar cambios de estado (login/logout)
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       setSession(session);
       setCargandoSesion(false);
     });
 
     return () => subscription.unsubscribe();
-  }, [supabase]);
+  }, []);
 
   const handleLogin = async (e) => {
     e.preventDefault();
@@ -54,7 +55,6 @@ export default function Home() {
     await supabase.auth.signOut();
   };
 
-  // 1. PANTALLA DE CARGA INICIAL
   if (cargandoSesion) {
     return (
       <div style={{ minHeight: '100vh', backgroundColor: '#f5f2eb', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -63,7 +63,6 @@ export default function Home() {
     );
   }
 
-  // 2. FORMULARIO DE LOGIN (SI NO HAY SESIÓN ACTIVA)
   if (!session) {
     return (
       <div style={{
@@ -176,10 +175,8 @@ export default function Home() {
     );
   }
 
-  // 3. APARTADO PRINCIPAL DEL SISTEMA (SESIÓN ACTIVA)
   return (
     <main style={{ minHeight: '100vh', backgroundColor: '#f5f2eb', padding: '1.5rem' }}>
-      {/* BARRA SUPERIOR CON SESIÓN Y LOGOUT */}
       <div style={{
         display: 'flex',
         justify: 'space-between',
@@ -211,7 +208,6 @@ export default function Home() {
         </button>
       </div>
 
-      {/* COMPONENTE PRINCIPAL */}
       <ClientesContainer supabase={supabase} />
     </main>
   );
