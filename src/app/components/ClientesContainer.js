@@ -1,4 +1,11 @@
-// VERIFICACIÓN EN SEGUNDO PLANO Y MANUAL
+'use client';
+
+import { useState, useEffect } from 'react';
+import TablaClientes from './TablaClientes';
+import ModalCliente from './ModalCliente';
+import ModalNuevoCliente from './ModalNuevoCliente';
+
+export default function ClientesContainer({ supabase }) {// VERIFICACIÓN EN SEGUNDO PLANO Y MANUAL
   const corroborarBCRAMasivamenteSilencioso = async (listaClientes) => {
     const conCuit = listaClientes.filter(
       (c) => String(c.cuit_dni || c.cuit || '').replace(/\D/g, '').length === 11
