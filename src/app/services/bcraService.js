@@ -17,7 +17,7 @@ export const consultarBCRACuit = async (cuitLimpio) => {
       clearTimeout(timeoutId);
 
       if (res.status === 404) {
-        return 1; // Sin deudas -> Situación 1
+        return 1; // Sin deudas -> Situación 1 (Normal)
       } else if (res.ok) {
         const data = await res.json();
         let peorSituacion = 1;
@@ -34,5 +34,5 @@ export const consultarBCRACuit = async (cuitLimpio) => {
     }
   }
 
-  return null;
+  return null; // Si fallan los proxies
 };
