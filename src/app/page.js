@@ -1,5 +1,7 @@
 'use client';
 
+export const dynamic = 'force-dynamic';
+
 import { useState, useEffect } from 'react';
 import { createClient } from '@supabase/supabase-js';
 import Navbar from './components/Navbar';
@@ -12,7 +14,7 @@ const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
 export default function Home() {
   const [session, setSession] = useState(null);
-  const [activeTab, setActiveTab] = useState('clientes'); // 'clientes', 'stock' o 'pedidos'
+  const [activeTab, setActiveTab] = useState('clientes');
 
   useEffect(() => {
     const getSession = async () => {
@@ -35,20 +37,18 @@ export default function Home() {
   return (
     <div style={{ minHeight: '100vh', backgroundColor: '#f5f2eb', fontFamily: 'sans-serif' }}>
       
-      {/* NAVBAR CON PROPS EXACTAS */}
       <Navbar 
         activeTab={activeTab} 
         setActiveTab={setActiveTab} 
         onLogout={handleSignOut} 
       />
 
-      {/* CONTENIDO SEGÚN LA PESTAÑA */}
       <main style={{ maxWidth: '1200px', margin: '0 auto', padding: '1.5rem' }}>
         {activeTab === 'clientes' && (
           <ClientesContainer supabase={supabase} />
         )}
 
-        {activeTab === 'stock' && (
+        {activeTab === 'stock' && StockContainer && (
           <StockContainer supabase={supabase} />
         )}
 
