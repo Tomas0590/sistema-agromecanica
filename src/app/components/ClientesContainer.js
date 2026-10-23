@@ -1,7 +1,6 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { consultarBCRACuit } from '../services/bcraService';
 import TablaClientes from './TablaClientes';
 import ModalCliente from './ModalCliente';
 import ModalNuevoCliente from './ModalNuevoCliente';
@@ -24,9 +23,17 @@ export default function ClientesContainer({ supabase }) {
   const [guardandoEdicion, setGuardandoEdicion] = useState(false);
   const [mostrarModalNuevo, setMostrarModalNuevo] = useState(false);
 
+  // 1. CARGA INICIAL DE CLIENTES
   useEffect(() => {
     cargarClientes();
   }, []);
+
+  // 2. DISPARO AUTOMÁTICO DE VERIFICACIÓN BCRA EN SEGUNDO PLANO
+  useEffect(() => {
+    if (clientes.length > 0) {
+      corroborarBCRAMasivamenteSilencioso(clientes);
+    }
+  }, [clientes.length]);
 
   const cargarClientes = async () => {
     try {
@@ -41,6 +48,50 @@ export default function ClientesContainer({ supabase }) {
     }
   };
 
+  // VERIFICACIÓN EN SEGUNDO PLANO (AUTOMÁTICA)
+  const corroborarBCRAMasivamenteSilencioso = async (listaClientes) => {
+    const conCuit = listaClientes.filter(
+      (c) => String(c.cuit_dni || c.cuit || '').replace(/\D/g, '').length === 11
+    );
+
+    if (conCuit.length === 0) return;
+
+    setCargandoBCRA(true);
+
+    for (let i = 0; i < conCuit.length; i++) {
+      const cli = conCuit[i];
+      const cuitLimpio = String(cli.cuit_dni || cli.cuit).replace(/\D/g, '');
+      setProgresoBcra(`(${i + 1}/${conCuit.length})`);
+
+      try {
+        const res = await fetch(`/api/bcra?cuit=${cuitLimpio}`);
+        if (res.ok) {
+          const data = await res.json();
+          let peorSit = 1;
+          const periodos = data?.results?.periodos || data?.periodos;
+          if (periodos?.[0]?.entidades) {
+            periodos[0].entidades.forEach((e) => {
+              const sit = Number(e.situacion || e.Situacion || 1);
+              if (sit > peorSit) peorSit = sit;
+            });
+          }
+          setSituacionesMap((prev) => ({ ...prev, [cli.id]: peorSit }));
+        } else if (res.status === 404) {
+          setSituacionesMap((prev) => ({ ...prev, [cli.id]: 1 }));
+        }
+      } catch (e) {
+        console.error(`Error consultando BCRA para ${cli.razon_social}:`, e);
+      }
+
+      // Pausa discreta para no saturar la red
+      await new Promise((r) => setTimeout(r, 150));
+    }
+
+    setCargandoBCRA(false);
+    setProgresoBcra('');
+  };
+
+  // VERIFICACIÓN MANUAL INDIVIDUAL
   const corroborarBCRAIndividual = async (cliente, e) => {
     if (e) e.stopPropagation();
     const cuitLimpio = String(cliente.cuit_dni || cliente.cuit || '').replace(/\D/g, '');
@@ -50,47 +101,30 @@ export default function ClientesContainer({ supabase }) {
     }
 
     setCargandoIndividualId(cliente.id);
-    const nuevaSit = await consultarBCRACuit(cuitLimpio);
 
-    if (nuevaSit !== null) {
-      setSituacionesMap((prev) => ({ ...prev, [cliente.id]: nuevaSit }));
-    } else {
-      alert('No se pudo conectar con el servidor del BCRA.');
-    }
-    setCargandoIndividualId(null);
-  };
-
-  const corroborarBCRAMasivamente = async () => {
-    setCargandoBCRA(true);
-    const conCuit = clientes.filter((c) => String(c.cuit_dni || c.cuit || '').replace(/\D/g, '').length === 11);
-
-    if (conCuit.length === 0) {
-      alert('No se encontraron clientes con CUIT válido de 11 dígitos.');
-      setCargandoBCRA(false);
-      return;
-    }
-
-    let evaluados = 0;
-    let errores = 0;
-
-    for (let i = 0; i < conCuit.length; i++) {
-      const cli = conCuit[i];
-      setProgresoBcra(`(${i + 1}/${conCuit.length})`);
-      const cuitLimpio = String(cli.cuit_dni || cli.cuit).replace(/\D/g, '');
-      const nuevaSit = await consultarBCRACuit(cuitLimpio);
-
-      if (nuevaSit !== null) {
-        setSituacionesMap((prev) => ({ ...prev, [cli.id]: nuevaSit }));
-        evaluados++;
+    try {
+      const res = await fetch(`/api/bcra?cuit=${cuitLimpio}`);
+      if (res.ok) {
+        const data = await res.json();
+        let peorSit = 1;
+        const periodos = data?.results?.periodos || data?.periodos;
+        if (periodos?.[0]?.entidades) {
+          periodos[0].entidades.forEach((e) => {
+            const sit = Number(e.situacion || e.Situacion || 1);
+            if (sit > peorSit) peorSit = sit;
+          });
+        }
+        setSituacionesMap((prev) => ({ ...prev, [cliente.id]: peorSit }));
+      } else if (res.status === 404) {
+        setSituacionesMap((prev) => ({ ...prev, [cliente.id]: 1 }));
       } else {
-        errores++;
+        alert('No se pudo obtener la información crediticia desde el BCRA.');
       }
-      await new Promise((r) => setTimeout(r, 200));
+    } catch (e) {
+      alert('Error de conexión con el servidor.');
+    } finally {
+      setCargandoIndividualId(null);
     }
-
-    setCargandoBCRA(false);
-    setProgresoBcra('');
-    alert(`Evaluación BCRA finalizada.\n✅ Actualizados: ${evaluados}\n⚠️ No consultados: ${errores}`);
   };
 
   const autocompletarNombresPendientes = async () => {
@@ -111,15 +145,14 @@ export default function ClientesContainer({ supabase }) {
     for (const cli of pendientes) {
       const cuitLimpio = String(cli.cuit_dni || cli.cuit).replace(/\D/g, '');
       try {
-        const res = await fetch(`https://afip.republica.dev/cuit/${cuitLimpio}`);
+        const res = await fetch(`/api/cuit?cuit=${cuitLimpio}`);
         if (res.ok) {
           const data = await res.json();
-          const nombreEncontrado = data.razon_social || data.nombre || data.razonSocial;
-          if (nombreEncontrado) {
+          if (data.razonSocial) {
             await supabase.from('clientes').update({
-              razon_social: nombreEncontrado,
-              condicion_iva: data.condicion_iva || cli.condicion_iva,
-              direccion: data.domicilio || cli.direccion
+              razon_social: data.razonSocial,
+              condicion_iva: data.condicionIva || cli.condicion_iva,
+              direccion: data.direccion || cli.direccion
             }).eq('id', cli.id);
             actualizados++;
           }
@@ -197,12 +230,17 @@ export default function ClientesContainer({ supabase }) {
           </span>
         </div>
 
-        <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', alignItems: 'center' }}>
+          {cargandoBCRA && (
+            <span style={{ fontSize: '0.8rem', color: '#d97706', fontWeight: 'bold', backgroundColor: '#fefce8', padding: '0.4rem 0.75rem', borderRadius: '6px', border: '1px solid #fef08a' }}>
+              🔄 Escaneando BCRA {progresoBcra}...
+            </span>
+          )}
           <button onClick={autocompletarNombresPendientes} disabled={cargandoNombres} style={{ background: '#0284c7', color: '#fff', border: 'none', padding: '0.55rem 0.9rem', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold', fontSize: '0.8rem' }}>
             {cargandoNombres ? '⏳ Procesando...' : '⚡ Autocompletar Nombres'}
           </button>
-          <button onClick={corroborarBCRAMasivamente} disabled={cargandoBCRA} style={{ background: '#d97706', color: '#fff', border: 'none', padding: '0.55rem 0.9rem', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold', fontSize: '0.8rem' }}>
-            {cargandoBCRA ? `⏳ Consultando ${progresoBcra}...` : '🔍 Corroborar BCRA Masivamente'}
+          <button onClick={() => corroborarBCRAMasivamenteSilencioso(clientes)} disabled={cargandoBCRA} style={{ background: '#d97706', color: '#fff', border: 'none', padding: '0.55rem 0.9rem', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold', fontSize: '0.8rem' }}>
+            {cargandoBCRA ? `⏳ Escaneando...` : '🔍 Reevaluar BCRA Masivamente'}
           </button>
           <button onClick={() => setMostrarModalNuevo(true)} style={{ background: '#15803d', color: '#fff', border: 'none', padding: '0.55rem 1rem', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold', fontSize: '0.85rem' }}>
             ➕ Nuevo Cliente
