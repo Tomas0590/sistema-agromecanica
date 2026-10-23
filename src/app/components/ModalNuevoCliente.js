@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { consultarBCRACuit } from '../services/bcraService';
+import { consultarBCRACuit, consultarPadronAfip } from '../services/bcraService';
 
 export default function ModalNuevoCliente({
   mostrar,
@@ -27,7 +27,6 @@ export default function ModalNuevoCliente({
   if (!mostrar) return null;
 
   const handleCuitChange = async (e) => {
-    // Filtra todo lo que no sea dígito y corta en máximo 11 caracteres
     const soloNumeros = e.target.value.replace(/\D/g, '').slice(0, 11);
     setCuitDni(soloNumeros);
 
@@ -43,19 +42,20 @@ export default function ModalNuevoCliente({
       setSitBcraLeida(null);
 
       try {
-        const [resAfip, sitBcra] = await Promise.all([
-          fetch(`https://afip.republica.dev/cuit/${soloNumeros}`).catch(() => null),
+        // Ejecución en paralelo
+        const [datosAfip, sitBcra] = await Promise.all([
+          consultarPadronAfip(soloNumeros),
           consultarBCRACuit(soloNumeros)
         ]);
 
-        if (resAfip && resAfip.ok) {
-          const dataAfip = await resAfip.json();
-          const nombreEncontrado = dataAfip.razon_social || dataAfip.nombre || dataAfip.razonSocial;
-          if (nombreEncontrado) setRazonSocial(nombreEncontrado);
-          if (dataAfip.condicion_iva) setCondicionIva(dataAfip.condicion_iva);
-          if (dataAfip.domicilio) setDireccion(dataAfip.domicilio);
+        // Si AFIP devolvió datos, autocompletamos
+        if (datosAfip) {
+          if (datosAfip.razonSocial) setRazonSocial(datosAfip.razonSocial);
+          if (datosAfip.condicionIva) setCondicionIva(datosAfip.condicionIva);
+          if (datosAfip.domicilio) setDireccion(datosAfip.domicilio);
         }
 
+        // Si BCRA devolvió datos
         if (sitBcra !== null) {
           setSitBcraLeida(sitBcra);
         } else {
@@ -140,7 +140,7 @@ export default function ModalNuevoCliente({
                 type="text"
                 inputMode="numeric"
                 maxLength={11}
-                placeholder="Ej: 20422937634 (Solo 11 números)"
+                placeholder="Ej: 20330303744 (Solo 11 números)"
                 value={cuitDni}
                 onChange={handleCuitChange}
                 style={{ width: '100%', padding: '0.65rem', borderRadius: '6px', border: '1px solid #dcd5c9', background: '#fff', boxSizing: 'border-box', fontFamily: 'monospace' }}
