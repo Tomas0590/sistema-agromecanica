@@ -32,14 +32,18 @@ export default function ModalCliente({
     <div
       style={{
         position: 'fixed',
-        inset: 0,
-        backgroundColor: 'rgba(0,0,0,0.45)',
+        top: 0,
+        left: 0,
+        width: '100vw',
+        height: '100vh',
+        backgroundColor: 'rgba(0, 0, 0, 0.45)',
         backdropFilter: 'blur(3px)',
-        zIndex: 1000,
+        zIndex: 9999,
         display: 'flex',
         alignItems: 'center',
         justify: 'center',
-        padding: '1rem'
+        padding: '1rem',
+        boxSizing: 'border-box'
       }}
     >
       <div
@@ -49,9 +53,11 @@ export default function ModalCliente({
           borderRadius: '14px',
           width: '100%',
           maxWidth: '560px',
+          maxHeight: '90vh',
+          overflowY: 'auto',
           padding: '1.75rem',
           color: '#2b2927',
-          boxShadow: '0 12px 30px rgba(0,0,0,0.12)'
+          boxShadow: '0 12px 30px rgba(0,0,0,0.18)'
         }}
       >
         <div
@@ -81,7 +87,8 @@ export default function ModalCliente({
               width: '32px',
               height: '32px',
               cursor: 'pointer',
-              color: '#57534e'
+              color: '#57534e',
+              fontWeight: 'bold'
             }}
           >
             ✕
