@@ -5,12 +5,17 @@ import TablaClientes from './TablaClientes';
 import ModalCliente from './ModalCliente';
 import ModalNuevoCliente from './ModalNuevoCliente';
 
-export default function ClientesContainer({ supabase }) {
+export default function ClientesContainer({ 
+  supabase, 
+  situacionesMap, 
+  setSituacionesMap, 
+  yaVerificadoBcra, 
+  setYaVerificadoBcra 
+}) {
   const [clientes, setClientes] = useState([]);
   const [busqueda, setBusqueda] = useState('');
   const [ordenColumna, setOrdenColumna] = useState('razon_social');
   const [ordenAsc, setOrdenAsc] = useState(true);
-  const [situacionesMap, setSituacionesMap] = useState({});
 
   // Estados de procesos
   const [cargandoBCRA, setCargandoBCRA] = useState(false);
@@ -23,17 +28,16 @@ export default function ClientesContainer({ supabase }) {
   const [guardandoEdicion, setGuardandoEdicion] = useState(false);
   const [mostrarModalNuevo, setMostrarModalNuevo] = useState(false);
 
-  // 1. CARGA INICIAL DE CLIENTES
   useEffect(() => {
     cargarClientes();
   }, []);
 
-  // 2. DISPARO AUTOMÁTICO DE VERIFICACIÓN BCRA EN SEGUNDO PLANO
+  // 🔴 VERIFICACIÓN BCRA: Solo corre la PRIMERA vez al cargar la app
   useEffect(() => {
-    if (clientes.length > 0) {
+    if (clientes.length > 0 && !yaVerificadoBcra) {
       corroborarBCRAMasivamenteSilencioso(clientes);
     }
-  }, [clientes.length]);
+  }, [clientes.length, yaVerificadoBcra]);
 
   const cargarClientes = async () => {
     try {
@@ -48,7 +52,7 @@ export default function ClientesContainer({ supabase }) {
     }
   };
 
-  // VERIFICACIÓN EN SEGUNDO PLANO (AUTOMÁTICA)
+  // VERIFICACIÓN MASIVA SILENCIOSA
   const corroborarBCRAMasivamenteSilencioso = async (listaClientes) => {
     const conCuit = listaClientes.filter(
       (c) => String(c.cuit_dni || c.cuit || '').replace(/\D/g, '').length === 11
@@ -57,6 +61,7 @@ export default function ClientesContainer({ supabase }) {
     if (conCuit.length === 0) return;
 
     setCargandoBCRA(true);
+    setYaVerificadoBcra(true); // 👈 Marcamos inmediatamente que la verificación masiva ya inició
 
     for (let i = 0; i < conCuit.length; i++) {
       const cli = conCuit[i];
@@ -84,7 +89,6 @@ export default function ClientesContainer({ supabase }) {
         console.error(`Error consultando BCRA para ${cli.razon_social}:`, e);
       }
 
-      // Pausa discreta para no saturar la red
       await new Promise((r) => setTimeout(r, 150));
     }
 
@@ -92,7 +96,7 @@ export default function ClientesContainer({ supabase }) {
     setProgresoBcra('');
   };
 
-  // VERIFICACIÓN MANUAL INDIVIDUAL
+  // VERIFICACIÓN MANUAL INDIVIDUAL (boton de reevaluar o desde el modal)
   const corroborarBCRAIndividual = async (cliente, e) => {
     if (e) e.stopPropagation();
     const cuitLimpio = String(cliente.cuit_dni || cliente.cuit || '').replace(/\D/g, '');
