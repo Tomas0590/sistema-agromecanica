@@ -1,5 +1,8 @@
 'use client';
 
+import { useEffect, useState } from 'react';
+import { createPortal } from 'react-dom';
+
 export default function ModalCliente({
   clienteDetalle,
   setClienteDetalle,
@@ -10,12 +13,18 @@ export default function ModalCliente({
   corroborarBCRAIndividual,
   cargandoIndividualId
 }) {
-  if (!clienteDetalle) return null;
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  if (!clienteDetalle || !mounted) return null;
 
   const infoBcra = situacionesMap ? situacionesMap[clienteDetalle.id] : null;
   const cargando = cargandoIndividualId === clienteDetalle.id;
 
-  // Parseo seguro de la situación crediticia y cheques rechazados
+  // Parseo seguro de situación crediticia y cheques
   let sit = null;
   let cheques = 0;
 
@@ -28,23 +37,24 @@ export default function ModalCliente({
     }
   }
 
-  return (
+  const modalUI = (
     <div
       style={{
         position: 'fixed',
         top: 0,
         left: 0,
-        width: '100vw',
-        height: '100vh',
+        right: 0,
+        bottom: 0,
         backgroundColor: 'rgba(0, 0, 0, 0.45)',
         backdropFilter: 'blur(3px)',
-        zIndex: 9999,
+        zIndex: 999999,
         display: 'flex',
         alignItems: 'center',
         justify: 'center',
         padding: '1rem',
         boxSizing: 'border-box'
       }}
+      onClick={() => setClienteDetalle(null)}
     >
       <div
         style={{
@@ -57,8 +67,9 @@ export default function ModalCliente({
           overflowY: 'auto',
           padding: '1.75rem',
           color: '#2b2927',
-          boxShadow: '0 12px 30px rgba(0,0,0,0.18)'
+          boxShadow: '0 12px 30px rgba(0,0,0,0.25)'
         }}
+        onClick={(e) => e.stopPropagation()}
       >
         <div
           style={{
@@ -95,7 +106,7 @@ export default function ModalCliente({
           </button>
         </div>
 
-        {/* PANEL ESTADO BCRA DENTRO DEL MODAL */}
+        {/* PANEL BCRA */}
         <div
           style={{
             backgroundColor: '#f5f2eb',
@@ -281,4 +292,6 @@ export default function ModalCliente({
       </div>
     </div>
   );
+
+  return createPortal(modalUI, document.body);
 }
