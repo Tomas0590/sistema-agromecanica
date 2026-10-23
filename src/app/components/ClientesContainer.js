@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { consultarBCRACuit } from '../services/bcraService';
 import TablaClientes from './TablaClientes';
 import ModalCliente from './ModalCliente';
+import ModalNuevoCliente from './ModalNuevoCliente';
 
 export default function ClientesContainer({ supabase }) {
   const [clientes, setClientes] = useState([]);
@@ -17,21 +18,11 @@ export default function ClientesContainer({ supabase }) {
   const [progresoBcra, setProgresoBcra] = useState('');
   const [cargandoIndividualId, setCargandoIndividualId] = useState(null);
   const [cargandoNombres, setCargandoNombres] = useState(false);
-  const [buscandoCuitApi, setBuscandoCuitApi] = useState(false);
 
-  // Cliente en edición / detalle
+  // Cliente en edición y alta
   const [clienteDetalle, setClienteDetalle] = useState(null);
   const [guardandoEdicion, setGuardandoEdicion] = useState(false);
-
-  // Formulario nuevo cliente
-  const [razonSocial, setRazonSocial] = useState('');
-  const [cuitDni, setCuitDni] = useState('');
-  const [condicionIva, setCondicionIva] = useState('Responsable Inscripto');
-  const [telefono, setTelefono] = useState('');
-  const [email, setEmail] = useState('');
-  const [direccion, setDireccion] = useState('');
   const [mostrarModalNuevo, setMostrarModalNuevo] = useState(false);
-  const [mensajeForm, setMensajeForm] = useState('');
 
   useEffect(() => {
     cargarClientes();
@@ -143,29 +134,6 @@ export default function ClientesContainer({ supabase }) {
     cargarClientes();
   };
 
-  const guardarNuevoCliente = async (e) => {
-    e.preventDefault();
-    if (!razonSocial.trim()) return setMensajeForm('La Razón Social es obligatoria.');
-    const valorCuit = cuitDni.trim() || null;
-
-    const { error } = await supabase.from('clientes').insert([{
-      razon_social: razonSocial.trim(),
-      cuit_dni: valorCuit,
-      cuit: valorCuit,
-      condicion_iva: condicionIva,
-      telefono: telefono.trim() || null,
-      email: email.trim() || null,
-      direccion: direccion.trim() || null
-    }]);
-
-    if (error) setMensajeForm(`Error: ${error.message}`);
-    else {
-      setRazonSocial(''); setCuitDni(''); setTelefono(''); setEmail(''); setDireccion('');
-      setMostrarModalNuevo(false);
-      cargarClientes();
-    }
-  };
-
   const guardarCambiosCliente = async (e) => {
     e.preventDefault();
     if (!clienteDetalle) return;
@@ -179,7 +147,8 @@ export default function ClientesContainer({ supabase }) {
       condicion_iva: clienteDetalle.condicion_iva,
       telefono: clienteDetalle.telefono,
       email: clienteDetalle.email,
-      direccion: clienteDetalle.direccion
+      direccion: clienteDetalle.direccion,
+      observaciones: clienteDetalle.observaciones
     }).eq('id', clienteDetalle.id);
 
     setGuardandoEdicion(false);
@@ -235,7 +204,7 @@ export default function ClientesContainer({ supabase }) {
           <button onClick={corroborarBCRAMasivamente} disabled={cargandoBCRA} style={{ background: '#d97706', color: '#fff', border: 'none', padding: '0.55rem 0.9rem', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold', fontSize: '0.8rem' }}>
             {cargandoBCRA ? `⏳ Consultando ${progresoBcra}...` : '🔍 Corroborar BCRA Masivamente'}
           </button>
-          <button onClick={() => { setMensajeForm(''); setMostrarModalNuevo(true); }} style={{ background: '#15803d', color: '#fff', border: 'none', padding: '0.55rem 1rem', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold', fontSize: '0.85rem' }}>
+          <button onClick={() => setMostrarModalNuevo(true)} style={{ background: '#15803d', color: '#fff', border: 'none', padding: '0.55rem 1rem', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold', fontSize: '0.85rem' }}>
             ➕ Nuevo Cliente
           </button>
         </div>
@@ -268,7 +237,7 @@ export default function ClientesContainer({ supabase }) {
         />
       </div>
 
-      {/* MODAL FICHA / EDITAR CLIENTE */}
+      {/* MODAL EDITAR CLIENTE */}
       <ModalCliente
         clienteDetalle={clienteDetalle}
         setClienteDetalle={setClienteDetalle}
@@ -281,31 +250,13 @@ export default function ClientesContainer({ supabase }) {
       />
 
       {/* MODAL NUEVO CLIENTE */}
-      {mostrarModalNuevo && (
-        <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.4)', backdropFilter: 'blur(2px)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}>
-          <div style={{ background: '#fcfbf9', border: '1px solid #e5e0d8', borderRadius: '12px', width: '100%', maxWidth: '520px', padding: '1.5rem' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '1rem' }}>
-              <h3 style={{ margin: 0, color: '#dc2626' }}>➕ Cargar Nuevo Cliente</h3>
-              <button onClick={() => setMostrarModalNuevo(false)} style={{ background: 'transparent', border: 'none', cursor: 'pointer' }}>✕</button>
-            </div>
-            {mensajeForm && <div style={{ color: '#dc2626', marginBottom: '1rem', fontSize: '0.85rem' }}>{mensajeForm}</div>}
-            <form onSubmit={guardarNuevoCliente} style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem' }}>
-              <div>
-                <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 'bold', color: '#57534e' }}>CUIT / DNI</label>
-                <input type="text" placeholder="Ej: 20123456789" value={cuitDni} onChange={(e) => setCuitDni(e.target.value)} style={{ width: '100%', padding: '0.6rem', borderRadius: '6px', border: '1px solid #dcd5c9' }} />
-              </div>
-              <div>
-                <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 'bold', color: '#57534e' }}>Razón Social *</label>
-                <input type="text" value={razonSocial} onChange={(e) => setRazonSocial(e.target.value)} required style={{ width: '100%', padding: '0.6rem', borderRadius: '6px', border: '1px solid #dcd5c9' }} />
-              </div>
-              <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end', marginTop: '0.5rem' }}>
-                <button type="button" onClick={() => setMostrarModalNuevo(false)} style={{ padding: '0.5rem 1rem', borderRadius: '6px', border: '1px solid #dcd5c9', background: '#eeeae1' }}>Cancelar</button>
-                <button type="submit" style={{ padding: '0.5rem 1rem', borderRadius: '6px', border: 'none', background: '#15803d', color: '#fff', fontWeight: 'bold' }}>Guardar Cliente</button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
+      <ModalNuevoCliente
+        mostrar={mostrarModalNuevo}
+        onClose={() => setMostrarModalNuevo(false)}
+        supabase={supabase}
+        onClienteCreado={cargarClientes}
+        setSituacionesMap={setSituacionesMap}
+      />
     </div>
   );
 }
