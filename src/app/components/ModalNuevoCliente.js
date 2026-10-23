@@ -1,7 +1,6 @@
 'use client';
 
 import { useState } from 'react';
-import { consultarBCRACuit, consultarPadronAfip } from '../services/bcraService';
 
 export default function ModalNuevoCliente({
   mostrar,
@@ -26,7 +25,9 @@ export default function ModalNuevoCliente({
 
   if (!mostrar) return null;
 
+  // LECTURA AUTOMÁTICA AL INGRESAR 11 DÍGITOS
   const handleCuitChange = async (e) => {
+    // Filtra todo lo que no sea número y limita a 11 dígitos
     const soloNumeros = e.target.value.replace(/\D/g, '').slice(0, 11);
     setCuitDni(soloNumeros);
 
@@ -42,25 +43,40 @@ export default function ModalNuevoCliente({
       setSitBcraLeida(null);
 
       try {
-        // Ejecución en paralelo
-        const [datosAfip, sitBcra] = await Promise.all([
-          consultarPadronAfip(soloNumeros),
-          consultarBCRACuit(soloNumeros)
+        // 1. Consulta en paralelo a tus endpoints internos
+        const [resCuit, resBcra] = await Promise.all([
+          fetch(`/api/cuit?cuit=${soloNumeros}`).catch(() => null),
+          fetch(`/api/bcra?cuit=${soloNumeros}`).catch(() => null)
         ]);
 
-        // Si AFIP devolvió datos, autocompletamos
-        if (datosAfip) {
-          if (datosAfip.razonSocial) setRazonSocial(datosAfip.razonSocial);
-          if (datosAfip.condicionIva) setCondicionIva(datosAfip.condicionIva);
-          if (datosAfip.domicilio) setDireccion(datosAfip.domicilio);
+        // Procesar Razón Social y Datos Generales
+        if (resCuit && resCuit.ok) {
+          const dataCuit = await resCuit.json();
+          if (dataCuit.razonSocial) setRazonSocial(dataCuit.razonSocial);
+          if (dataCuit.condicionIva) setCondicionIva(dataCuit.condicionIva);
+          if (dataCuit.direccion) setDireccion(dataCuit.direccion);
         }
 
-        // Si BCRA devolvió datos
-        if (sitBcra !== null) {
-          setSitBcraLeida(sitBcra);
+        // Procesar Situación Crediticia BCRA
+        if (resBcra && resBcra.ok) {
+          const dataBcra = await resBcra.json();
+          let peorSit = 1;
+
+          const periodos = dataBcra?.results?.periodos || dataBcra?.periodos;
+          if (periodos?.[0]?.entidades) {
+            periodos[0].entidades.forEach((e) => {
+              const sit = Number(e.situacion || e.Situacion || 1);
+              if (sit > peorSit) peorSit = sit;
+            });
+          }
+          setSitBcraLeida(peorSit);
+        } else if (resBcra && resBcra.status === 404) {
+          // 404 en el BCRA significa que no tiene deudas bancarias registradas (Sit 1)
+          setSitBcraLeida(1);
         } else {
           setErrorBcra(true);
         }
+
       } catch (err) {
         console.error('Error al autocompletar:', err);
         setErrorBcra(true);
@@ -147,7 +163,7 @@ export default function ModalNuevoCliente({
               />
               {buscandoPadron && (
                 <span style={{ position: 'absolute', right: '10px', top: '50%', transform: 'translateY(-50%)', fontSize: '0.75rem', color: '#0284c7', fontWeight: 'bold' }}>
-                  ⏳ Leyendo AFIP y BCRA...
+                  ⏳ Buscando datos...
                 </span>
               )}
             </div>
@@ -161,7 +177,7 @@ export default function ModalNuevoCliente({
                 </span>
               ) : errorBcra ? (
                 <span style={{ color: '#d97706', fontWeight: 'bold' }}>
-                  ⚠️ No se pudo leer la situación bancaria en el BCRA. Se mantendrá en Sit. 1 por defecto.
+                  ⚠️ No se pudo leer la situación bancaria en el BCRA. Se guardará sin verificación previa.
                 </span>
               ) : (
                 <span style={{ color: '#78716c' }}>Verificando historial en Central de Deudores BCRA...</span>
