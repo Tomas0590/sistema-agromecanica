@@ -24,8 +24,6 @@ export default function Navbar({ activeTab, setActiveTab, onLogout }) {
         }}
       >
         <div style={{ display: 'flex', alignItems: 'center', gap: '2rem', flexWrap: 'wrap' }}>
-          
-          {/* LOGO DE LA EMPRESA Y MARCA */}
           <div 
             style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', cursor: 'pointer' }} 
             onClick={() => setActiveTab('clientes')}
@@ -40,7 +38,6 @@ export default function Navbar({ activeTab, setActiveTab, onLogout }) {
             </h1>
           </div>
 
-          {/* BOTONES DE NAVEGACIÓN */}
           <nav style={{ display: 'flex', gap: '0.4rem' }}>
             <button
               onClick={() => setActiveTab('clientes')}
@@ -52,8 +49,7 @@ export default function Navbar({ activeTab, setActiveTab, onLogout }) {
                 borderRadius: '8px',
                 cursor: 'pointer',
                 fontWeight: 'bold',
-                fontSize: '0.875rem',
-                transition: 'all 0.15s'
+                fontSize: '0.875rem'
               }}
             >
               👥 Clientes
@@ -68,8 +64,7 @@ export default function Navbar({ activeTab, setActiveTab, onLogout }) {
                 borderRadius: '8px',
                 cursor: 'pointer',
                 fontWeight: 'bold',
-                fontSize: '0.875rem',
-                transition: 'all 0.15s'
+                fontSize: '0.875rem'
               }}
             >
               📦 Stock e Inventario
@@ -84,8 +79,7 @@ export default function Navbar({ activeTab, setActiveTab, onLogout }) {
                 borderRadius: '8px',
                 cursor: 'pointer',
                 fontWeight: 'bold',
-                fontSize: '0.875rem',
-                transition: 'all 0.15s'
+                fontSize: '0.875rem'
               }}
             >
               🛒 Pedidos de Venta
@@ -93,7 +87,6 @@ export default function Navbar({ activeTab, setActiveTab, onLogout }) {
           </nav>
         </div>
 
-        {/* CERRAR SESIÓN */}
         <button
           onClick={onLogout}
           style={{
