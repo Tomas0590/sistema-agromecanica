@@ -5,7 +5,7 @@ export default function Navbar({ activeTab, setActiveTab, onLogout }) {
     <header style={{ background: '#1e293b', borderBottom: '1px solid #334155', padding: '1rem 2rem' }}>
       <div style={{ maxWidth: '1200px', margin: '0 auto', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '2rem', flexWrap: 'wrap' }}>
-          <h1 style={{ margin: 0, fontSize: '1.4rem', color: '#f59e0b', fontWeight: 'bold' }}>
+          <h1 style={{ margin: 0, fontSize: '1.4rem', color: '#dc2626', fontWeight: 'bold' }}>
             Agromecanica
           </h1>
           <nav style={{ display: 'flex', gap: '0.5rem' }}>
