@@ -1,196 +1,63 @@
 'use client';
 
-import { useState } from 'react';
-import { consultarBCRACuit } from '../services/bcraService';
-
-export default function ModalNuevoCliente({
-  mostrar,
-  onClose,
-  supabase,
-  onClienteCreado,
-  setSituacionesMap
+export default function ModalCliente({
+  clienteDetalle,
+  setClienteDetalle,
+  guardarCambiosCliente,
+  guardandoEdicion,
+  borrarCliente,
+  situacionesMap,
+  corroborarBCRAIndividual,
+  cargandoIndividualId
 }) {
-  const [cuitDni, setCuitDni] = useState('');
-  const [razonSocial, setRazonSocial] = useState('');
-  const [condicionIva, setCondicionIva] = useState('Responsable Inscripto');
-  const [telefono, setTelefono] = useState('');
-  const [email, setEmail] = useState('');
-  const [direccion, setDireccion] = useState('');
-  const [observaciones, setObservaciones] = useState('');
-
-  // Estados del proceso de autocompletado
-  const [buscandoPadron, setBuscandoPadron] = useState(false);
-  const [sitBcraLeida, setSitBcraLeida] = useState(null); // null = pendiente / fallo
-  const [errorBcra, setErrorBcra] = useState(false);
-  const [mensajeForm, setMensajeForm] = useState('');
-  const [guardando, setGuardando] = useState(false);
-
-  if (!mostrar) return null;
-
-  // AUTOCOMPLETADO AUTOMÁTICO AL INGRESAR 11 DÍGITOS
-  const handleCuitChange = async (e) => {
-    const val = e.target.value;
-    setCuitDni(val);
-    const cuitLimpio = val.replace(/\D/g, '');
-
-    if (cuitLimpio.length === 11) {
-      setBuscandoPadron(true);
-      setErrorBcra(false);
-      setSitBcraLeida(null);
-
-      // Consulta en paralelo a AFIP y BCRA
-      try {
-        const [resAfip, sitBcra] = await Promise.all([
-          fetch(`https://afip.republica.dev/cuit/${cuitLimpio}`).catch(() => null),
-          consultarBCRACuit(cuitLimpio)
-        ]);
-
-        // Autocompletado de AFIP
-        if (resAfip && resAfip.ok) {
-          const dataAfip = await resAfip.json();
-          const nombreEncontrado = dataAfip.razon_social || dataAfip.nombre || dataAfip.razonSocial;
-          if (nombreEncontrado) setRazonSocial(nombreEncontrado);
-          if (dataAfip.condicion_iva) setCondicionIva(dataAfip.condicion_iva);
-          if (dataAfip.domicilio) setDireccion(dataAfip.domicilio);
-        }
-
-        // Asignación de Situación BCRA
-        if (sitBcra !== null) {
-          setSitBcraLeida(sitBcra);
-        } else {
-          setErrorBcra(true);
-        }
-      } catch (err) {
-        console.error('Error al autocompletar:', err);
-        setErrorBcra(true);
-      } finally {
-        setBuscandoPadron(false);
-      }
-    }
-  };
-
-  const handleGuardar = async (e) => {
-    e.preventDefault();
-    setMensajeForm('');
-
-    if (!razonSocial.trim()) {
-      setMensajeForm('La Razón Social es obligatoria.');
-      return;
-    }
-
-    setGuardando(true);
-    const valorCuit = cuitDni.trim() || null;
-
-    const payload = {
-      razon_social: razonSocial.trim(),
-      cuit_dni: valorCuit,
-      cuit: valorCuit,
-      condicion_iva: condicionIva,
-      telefono: telefono.trim() || null,
-      email: email.trim() || null,
-      direccion: direccion.trim() || null,
-      observaciones: observaciones.trim() || null
-    };
-
-    const { data, error } = await supabase.from('clientes').insert([payload]).select();
-
-    setGuardando(false);
-
-    if (error) {
-      setMensajeForm(`Error al guardar: ${error.message}`);
-    } else {
-      // Guardar situación en mapa local si se detectó
-      if (data?.[0]?.id && sitBcraLeida !== null) {
-        setSituacionesMap((prev) => ({ ...prev, [data[0].id]: sitBcraLeida }));
-      }
-
-      // Limpiar formulario y cerrar
-      setCuitDni(''); setRazonSocial(''); setTelefono(''); setEmail('');
-      setDireccion(''); setObservaciones(''); setSitBcraLeida(null); setErrorBcra(false);
-      onClienteCreado();
-      onClose();
-    }
-  };
+  if (!clienteDetalle) return null;
 
   return (
     <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.45)', backdropFilter: 'blur(3px)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}>
-      <div style={{ background: '#fcfbf9', border: '1px solid #e5e0d8', borderRadius: '14px', width: '100%', maxWidth: '560px', padding: '1.75rem', color: '#2b2927', boxShadow: '0 12px 30px rgba(0,0,0,0.12)' }}>
+      <div style={{ background: '#fcfbf9', border: '1px solid #e5e0d8', borderRadius: '14px', width: '100%', maxWidth: '580px', padding: '1.75rem', color: '#2b2927', boxShadow: '0 12px 30px rgba(0,0,0,0.12)' }}>
         
-        {/* CABECERA */}
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem', borderBottom: '2px solid #eeeae1', paddingBottom: '0.85rem' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '1.25rem', borderBottom: '2px solid #eeeae1', paddingBottom: '0.85rem' }}>
           <div>
-            <h3 style={{ margin: 0, color: '#dc2626', fontSize: '1.25rem', fontWeight: '800' }}>➕ Cargar Nuevo Cliente</h3>
-            <span style={{ fontSize: '0.8rem', color: '#78716c' }}>Ingresá el CUIT para autocompletar la información</span>
+            <span style={{ fontSize: '0.75rem', fontWeight: '700', textTransform: 'uppercase', color: '#dc2626', letterSpacing: '0.05em' }}>
+              Ficha & Edición de Cliente
+            </span>
+            <h3 style={{ margin: '0.2rem 0 0 0', color: '#1c1917', fontSize: '1.35rem', fontWeight: '800' }}>
+              {clienteDetalle.razon_social}
+            </h3>
           </div>
-          <button onClick={onClose} style={{ background: '#eeeae1', border: 'none', borderRadius: '50%', width: '32px', height: '32px', cursor: 'pointer', color: '#57534e' }}>✕</button>
+          <button onClick={() => setClienteDetalle(null)} style={{ background: '#eeeae1', border: 'none', borderRadius: '50%', width: '32px', height: '32px', fontSize: '1rem', cursor: 'pointer', color: '#57534e', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            ✕
+          </button>
         </div>
 
-        {mensajeForm && (
-          <div style={{ backgroundColor: '#fef2f2', border: '1px solid #fecaca', color: '#dc2626', padding: '0.6rem', borderRadius: '6px', marginBottom: '1rem', fontSize: '0.85rem' }}>
-            {mensajeForm}
-          </div>
-        )}
-
-        <form onSubmit={handleGuardar} style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem' }}>
-          
-          {/* CUIT CON LECTOR DE AFIP Y BCRA */}
-          <div>
-            <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 'bold', color: '#57534e', marginBottom: '0.2rem' }}>
-              CUIT / DNI
-            </label>
-            <div style={{ position: 'relative' }}>
-              <input
-                type="text"
-                placeholder="Ej: 20422937634 (Autocompleta con 11 dígitos)"
-                value={cuitDni}
-                onChange={handleCuitChange}
-                style={{ width: '100%', padding: '0.65rem', borderRadius: '6px', border: '1px solid #dcd5c9', background: '#fff', boxSizing: 'border-box', fontFamily: 'monospace' }}
-              />
-              {buscandoPadron && (
-                <span style={{ position: 'absolute', right: '10px', top: '50%', transform: 'translateY(-50%)', fontSize: '0.75rem', color: '#0284c7', fontWeight: 'bold' }}>
-                  ⏳ Leyendo AFIP y BCRA...
-                </span>
-              )}
-            </div>
-          </div>
-
-          {/* MENSAJE DE ESTADO BCRA DE LA LECTURA INICIAL */}
-          {cuitDni.replace(/\D/g, '').length === 11 && (
-            <div style={{ backgroundColor: '#f5f2eb', padding: '0.65rem 0.85rem', borderRadius: '6px', border: '1px solid #e5e0d8', fontSize: '0.8rem' }}>
-              {sitBcraLeida !== null ? (
-                <span style={{ color: sitBcraLeida === 1 ? '#166534' : '#dc2626', fontWeight: 'bold' }}>
-                  {sitBcraLeida === 1 ? '✅ Situación BCRA: Sit. 1 Normal' : `⚠️ Situación BCRA: Sit. ${sitBcraLeida} Alerta`}
-                </span>
-              ) : errorBcra ? (
-                <span style={{ color: '#d97706', fontWeight: 'bold' }}>
-                  ⚠️ No se pudo leer la situación bancaria en el BCRA. Se mantendrá en Sit. 1 por defecto.
-                </span>
-              ) : (
-                <span style={{ color: '#78716c' }}>Verificando historial en Central de Deudores BCRA...</span>
-              )}
-            </div>
-          )}
-
-          {/* RAZÓN SOCIAL */}
+        <form onSubmit={guardarCambiosCliente} style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem' }}>
           <div>
             <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 'bold', color: '#57534e', marginBottom: '0.2rem' }}>Razón Social *</label>
             <input
               type="text"
-              placeholder="Se autocompleta con el CUIT o ingresala manualmente"
-              value={razonSocial}
-              onChange={(e) => setRazonSocial(e.target.value)}
+              value={clienteDetalle.razon_social || ''}
+              onChange={(e) => setClienteDetalle({ ...clienteDetalle, razon_social: e.target.value })}
               required
               style={{ width: '100%', padding: '0.6rem', borderRadius: '6px', border: '1px solid #dcd5c9', background: '#fff', boxSizing: 'border-box' }}
             />
           </div>
 
-          {/* CONDICIÓN IVA Y DIRECCIÓN */}
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
+            <div>
+              <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 'bold', color: '#57534e', marginBottom: '0.2rem' }}>CUIT / DNI</label>
+              <input
+                type="text"
+                value={clienteDetalle.cuit_dni || clienteDetalle.cuit || ''}
+                onChange={(e) => setClienteDetalle({ ...clienteDetalle, cuit_dni: e.target.value, cuit: e.target.value })}
+                style={{ width: '100%', padding: '0.6rem', borderRadius: '6px', border: '1px solid #dcd5c9', background: '#fff', boxSizing: 'border-box', fontFamily: 'monospace' }}
+              />
+            </div>
+
             <div>
               <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 'bold', color: '#57534e', marginBottom: '0.2rem' }}>Condición IVA</label>
               <select
-                value={condicionIva}
-                onChange={(e) => setCondicionIva(e.target.value)}
+                value={clienteDetalle.condicion_iva || 'Responsable Inscripto'}
+                onChange={(e) => setClienteDetalle({ ...clienteDetalle, condicion_iva: e.target.value })}
                 style={{ width: '100%', padding: '0.6rem', borderRadius: '6px', border: '1px solid #dcd5c9', background: '#fff', boxSizing: 'border-box' }}
               >
                 <option value="Responsable Inscripto">Responsable Inscripto</option>
@@ -199,28 +66,15 @@ export default function ModalNuevoCliente({
                 <option value="Consumidor Final">Consumidor Final</option>
               </select>
             </div>
-
-            <div>
-              <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 'bold', color: '#57534e', marginBottom: '0.2rem' }}>Dirección / Localidad</label>
-              <input
-                type="text"
-                placeholder="Ej: Carhué"
-                value={direccion}
-                onChange={(e) => setDireccion(e.target.value)}
-                style={{ width: '100%', padding: '0.6rem', borderRadius: '6px', border: '1px solid #dcd5c9', background: '#fff', boxSizing: 'border-box' }}
-              />
-            </div>
           </div>
 
-          {/* TELÉFONO Y EMAIL */}
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
             <div>
               <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 'bold', color: '#57534e', marginBottom: '0.2rem' }}>Teléfono</label>
               <input
                 type="text"
-                placeholder="Ej: 2936414244"
-                value={telefono}
-                onChange={(e) => setTelefono(e.target.value)}
+                value={clienteDetalle.telefono || ''}
+                onChange={(e) => setClienteDetalle({ ...clienteDetalle, telefono: e.target.value })}
                 style={{ width: '100%', padding: '0.6rem', borderRadius: '6px', border: '1px solid #dcd5c9', background: '#fff', boxSizing: 'border-box' }}
               />
             </div>
@@ -229,39 +83,84 @@ export default function ModalNuevoCliente({
               <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 'bold', color: '#57534e', marginBottom: '0.2rem' }}>Email</label>
               <input
                 type="email"
-                placeholder="cliente@ejemplo.com"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
+                value={clienteDetalle.email || ''}
+                onChange={(e) => setClienteDetalle({ ...clienteDetalle, email: e.target.value })}
                 style={{ width: '100%', padding: '0.6rem', borderRadius: '6px', border: '1px solid #dcd5c9', background: '#fff', boxSizing: 'border-box' }}
               />
             </div>
           </div>
 
-          {/* CAMPO EXTRA: OBSERVACIONES / COMENTARIOS */}
+          <div>
+            <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 'bold', color: '#57534e', marginBottom: '0.2rem' }}>Dirección / Localidad</label>
+            <input
+              type="text"
+              value={clienteDetalle.direccion || ''}
+              onChange={(e) => setClienteDetalle({ ...clienteDetalle, direccion: e.target.value })}
+              style={{ width: '100%', padding: '0.6rem', borderRadius: '6px', border: '1px solid #dcd5c9', background: '#fff', boxSizing: 'border-box' }}
+            />
+          </div>
+
           <div>
             <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 'bold', color: '#57534e', marginBottom: '0.2rem' }}>
               Comentarios / Observaciones Extra
             </label>
             <textarea
               rows={2}
-              placeholder="Notas importantes, condiciones especiales de pago, etc."
-              value={observaciones}
-              onChange={(e) => setObservaciones(e.target.value)}
+              value={clienteDetalle.observaciones || ''}
+              onChange={(e) => setClienteDetalle({ ...clienteDetalle, observaciones: e.target.value })}
+              placeholder="Notas sobre acuerdos, particularidades, etc."
               style={{ width: '100%', padding: '0.6rem', borderRadius: '6px', border: '1px solid #dcd5c9', background: '#fff', boxSizing: 'border-box', fontFamily: 'sans-serif' }}
             />
           </div>
 
-          {/* BOTONES ACCIÓN */}
-          <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end', marginTop: '0.75rem', borderTop: '1px solid #eeeae1', paddingTop: '1rem' }}>
-            <button type="button" onClick={onClose} style={{ padding: '0.55rem 1.1rem', borderRadius: '6px', border: '1px solid #dcd5c9', background: '#eeeae1', cursor: 'pointer', fontWeight: 'bold' }}>
-              Cancelar
-            </button>
-            <button type="submit" disabled={guardando} style={{ padding: '0.55rem 1.25rem', borderRadius: '6px', border: 'none', background: '#15803d', color: '#fff', fontWeight: 'bold', cursor: 'pointer' }}>
-              {guardando ? '💾 Guardando...' : '💾 Guardar Cliente'}
+          <div style={{ backgroundColor: '#f5f2eb', padding: '0.75rem', borderRadius: '8px', border: '1px solid #e5e0d8', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <div>
+              <span style={{ display: 'block', fontSize: '0.75rem', color: '#78716c', fontWeight: '700' }}>SITUACIÓN BCRA ACTUAL</span>
+              <span style={{ fontSize: '0.85rem', color: '#57534e', fontWeight: 'bold' }}>
+                Sit. {situacionesMap[clienteDetalle.id] || 1} {(situacionesMap[clienteDetalle.id] || 1) > 1 ? '⚠️' : '✅'}
+              </span>
+            </div>
+            <button
+              type="button"
+              onClick={(e) => corroborarBCRAIndividual(clienteDetalle, e)}
+              disabled={cargandoIndividualId === clienteDetalle.id}
+              style={{ background: '#d97706', color: '#fff', border: 'none', padding: '0.4rem 0.75rem', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold', fontSize: '0.75rem' }}
+            >
+              {cargandoIndividualId === clienteDetalle.id ? '⏳ Consultando...' : '🔄 Reevaluar BCRA Ahora'}
             </button>
           </div>
 
+          <div style={{ marginTop: '0.25rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            {(clienteDetalle.cuit_dni || clienteDetalle.cuit) ? (
+              <a
+                href={`https://www.lamacro.ar/central-de-deudores/${String(clienteDetalle.cuit_dni || clienteDetalle.cuit).replace(/\D/g, '')}`}
+                target="_blank"
+                rel="noreferrer"
+                style={{ color: '#0284c7', textDecoration: 'none', fontWeight: 'bold', fontSize: '0.85rem' }}
+              >
+                🔗 Consultar Padrón en La Macro ↗
+              </a>
+            ) : <div />}
+
+            <button
+              type="button"
+              onClick={() => borrarCliente(clienteDetalle.id)}
+              style={{ backgroundColor: '#fef2f2', border: '1px solid #fecaca', color: '#dc2626', padding: '0.4rem 0.8rem', borderRadius: '6px', cursor: 'pointer', fontSize: '0.8rem', fontWeight: 'bold' }}
+            >
+              🗑️ Eliminar Cliente
+            </button>
+          </div>
+
+          <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end', marginTop: '0.75rem', borderTop: '1px solid #eeeae1', paddingTop: '1rem' }}>
+            <button type="button" onClick={() => setClienteDetalle(null)} style={{ padding: '0.55rem 1.1rem', borderRadius: '6px', border: '1px solid #dcd5c9', background: '#eeeae1', cursor: 'pointer', fontWeight: 'bold' }}>
+              Cancelar
+            </button>
+            <button type="submit" disabled={guardandoEdicion} style={{ padding: '0.55rem 1.25rem', borderRadius: '6px', border: 'none', background: '#15803d', color: '#fff', fontWeight: 'bold', cursor: 'pointer' }}>
+              {guardandoEdicion ? '💾 Guardando...' : '💾 Guardar Cambios'}
+            </button>
+          </div>
         </form>
+
       </div>
     </div>
   );
