@@ -6,7 +6,6 @@ import { useState, useEffect } from 'react';
 import { createClient } from '@supabase/supabase-js';
 import dynamicComponent from 'next/dynamic';
 
-// Importaciones dinámicas del lado del cliente (evita el error de prerenderizado en Vercel)
 const Navbar = dynamicComponent(() => import('./components/Navbar'), { ssr: false });
 const ClientesContainer = dynamicComponent(() => import('./components/ClientesContainer'), { ssr: false });
 const StockContainer = dynamicComponent(() => import('./components/StockContainer'), { ssr: false });
@@ -17,7 +16,11 @@ const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
 export default function Home() {
   const [session, setSession] = useState(null);
-  const [activeTab, setActiveTab] = useState('clientes'); // 'clientes', 'stock' o 'pedidos'
+  const [activeTab, setActiveTab] = useState('clientes');
+
+  // Guardamos el estado del BCRA y si ya se hizo la verificación inicial a nivel global
+  const [situacionesMap, setSituacionesMap] = useState({});
+  const [yaVerificadoBcra, setYaVerificadoBcra] = useState(false);
 
   useEffect(() => {
     const getSession = async () => {
@@ -40,17 +43,21 @@ export default function Home() {
   return (
     <div style={{ minHeight: '100vh', backgroundColor: '#f5f2eb', fontFamily: 'sans-serif' }}>
       
-      {/* NAVBAR */}
       <Navbar 
         activeTab={activeTab} 
         setActiveTab={setActiveTab} 
         onLogout={handleSignOut} 
       />
 
-      {/* CONTENIDO SEGÚN LA PESTAÑA */}
       <main style={{ maxWidth: '1200px', margin: '0 auto', padding: '1.5rem' }}>
         {activeTab === 'clientes' && (
-          <ClientesContainer supabase={supabase} />
+          <ClientesContainer 
+            supabase={supabase} 
+            situacionesMap={situacionesMap}
+            setSituacionesMap={setSituacionesMap}
+            yaVerificadoBcra={yaVerificadoBcra}
+            setYaVerificadoBcra={setYaVerificadoBcra}
+          />
         )}
 
         {activeTab === 'stock' && (
