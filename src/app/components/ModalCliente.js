@@ -24,7 +24,6 @@ export default function ModalCliente({
   const infoBcra = situacionesMap ? situacionesMap[clienteDetalle.id] : null;
   const cargando = cargandoIndividualId === clienteDetalle.id;
 
-  // Parseo seguro de situación crediticia y cheques
   let sit = null;
   let cheques = 0;
 
@@ -41,33 +40,30 @@ export default function ModalCliente({
     <div
       style={{
         position: 'fixed',
-        top: 0,
-        left: 0,
-        right: 0,
-        bottom: 0,
-        backgroundColor: 'rgba(0, 0, 0, 0.45)',
+        inset: 0,
+        backgroundColor: 'rgba(0, 0, 0, 0.5)',
         backdropFilter: 'blur(3px)',
-        zIndex: 999999,
-        display: 'flex',
-        alignItems: 'center',
-        justify: 'center',
-        padding: '1rem',
-        boxSizing: 'border-box'
+        zIndex: 999999
       }}
       onClick={() => setClienteDetalle(null)}
     >
       <div
         style={{
+          position: 'fixed',
+          top: '50%',
+          left: '50%',
+          transform: 'translate(-50%, -50%)',
           background: '#fcfbf9',
           border: '1px solid #e5e0d8',
           borderRadius: '14px',
-          width: '100%',
+          width: '90%',
           maxWidth: '560px',
           maxHeight: '90vh',
           overflowY: 'auto',
           padding: '1.75rem',
           color: '#2b2927',
-          boxShadow: '0 12px 30px rgba(0,0,0,0.25)'
+          boxShadow: '0 12px 30px rgba(0,0,0,0.3)',
+          boxSizing: 'border-box'
         }}
         onClick={(e) => e.stopPropagation()}
       >
@@ -167,7 +163,6 @@ export default function ModalCliente({
         </div>
 
         <form onSubmit={guardarCambiosCliente} style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem' }}>
-          
           <div>
             <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 'bold', color: '#57534e', marginBottom: '0.2rem' }}>
               Razón Social *
@@ -287,7 +282,6 @@ export default function ModalCliente({
               </button>
             </div>
           </div>
-
         </form>
       </div>
     </div>
