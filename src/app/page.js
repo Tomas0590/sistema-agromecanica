@@ -1,15 +1,17 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
+import { createClient } from '@supabase/supabase-js';
 import ClientesContainer from './components/ClientesContainer';
-// Importá acá tu componente de Stock cuando lo tengas:
-// import StockContainer from './components/StockContainer';
+
+// Instancia estándar de Supabase usando tus variables de entorno existentes
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
+const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
+const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
 export default function Home() {
-  const supabase = createClientComponentClient();
   const [session, setSession] = useState(null);
-  const [pestanaActiva, setPestanaActiva] = useState('clientes'); // 'clientes' o 'stock'
+  const [pestanaActiva, setPestanaActiva] = useState('clientes');
 
   useEffect(() => {
     const getSession = async () => {
@@ -23,7 +25,7 @@ export default function Home() {
     });
 
     return () => subscription.unsubscribe();
-  }, [supabase]);
+  }, []);
 
   const handleSignOut = async () => {
     await supabase.auth.signOut();
@@ -33,7 +35,7 @@ export default function Home() {
     <main style={{ minHeight: '100vh', backgroundColor: '#f5f2eb', padding: '1.5rem', fontFamily: 'sans-serif' }}>
       <div style={{ maxWidth: '1200px', margin: '0 auto' }}>
         
-        {/* NAVBAR SUPERIOR CON LOGO Y NAVEGACIÓN DE PESTAÑAS */}
+        {/* NAVBAR SUPERIOR CON LOGO Y NAVEGACIÓN */}
         <header style={{ 
           backgroundColor: '#fcfbf9', 
           borderRadius: '12px', 
@@ -47,7 +49,6 @@ export default function Home() {
           gap: '1rem',
           boxShadow: '0 2px 8px rgba(0,0,0,0.04)'
         }}>
-          {/* IDENTIFICACIÓN DE LA EMPRESA Y PESTAÑAS */}
           <div style={{ display: 'flex', alignItems: 'center', gap: '2rem' }}>
             <h1 style={{ margin: 0, fontSize: '1.4rem', fontWeight: '800', color: '#dc2626', letterSpacing: '-0.02em' }}>
               Agromecanica
@@ -90,11 +91,10 @@ export default function Home() {
             </nav>
           </div>
 
-          {/* INFORMACIÓN DE SESIÓN Y LOGOUT */}
           {session && (
             <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
               <span style={{ fontSize: '0.8rem', color: '#57534e', fontWeight: '600' }}>
-                👤 {session.user.email}
+                👤 {session.user?.email}
               </span>
               <button
                 onClick={handleSignOut}
@@ -115,7 +115,7 @@ export default function Home() {
           )}
         </header>
 
-        {/* CONTENIDO SEGÚN LA PESTAÑA SELECCIONADA */}
+        {/* CONTENIDO SEGÚN PESTAÑA */}
         {pestanaActiva === 'clientes' ? (
           <ClientesContainer supabase={supabase} />
         ) : (
