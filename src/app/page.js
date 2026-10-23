@@ -4,9 +4,12 @@ export const dynamic = 'force-dynamic';
 
 import { useState, useEffect } from 'react';
 import { createClient } from '@supabase/supabase-js';
-import Navbar from './components/Navbar';
-import ClientesContainer from './components/ClientesContainer';
-import StockContainer from './components/StockContainer';
+import dynamicComponent from 'next/dynamic';
+
+// Importaciones dinámicas del lado del cliente (evita el error de prerenderizado en Vercel)
+const Navbar = dynamicComponent(() => import('./components/Navbar'), { ssr: false });
+const ClientesContainer = dynamicComponent(() => import('./components/ClientesContainer'), { ssr: false });
+const StockContainer = dynamicComponent(() => import('./components/StockContainer'), { ssr: false });
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
@@ -14,7 +17,7 @@ const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
 export default function Home() {
   const [session, setSession] = useState(null);
-  const [activeTab, setActiveTab] = useState('clientes');
+  const [activeTab, setActiveTab] = useState('clientes'); // 'clientes', 'stock' o 'pedidos'
 
   useEffect(() => {
     const getSession = async () => {
@@ -37,25 +40,27 @@ export default function Home() {
   return (
     <div style={{ minHeight: '100vh', backgroundColor: '#f5f2eb', fontFamily: 'sans-serif' }}>
       
+      {/* NAVBAR */}
       <Navbar 
         activeTab={activeTab} 
         setActiveTab={setActiveTab} 
         onLogout={handleSignOut} 
       />
 
+      {/* CONTENIDO SEGÚN LA PESTAÑA */}
       <main style={{ maxWidth: '1200px', margin: '0 auto', padding: '1.5rem' }}>
         {activeTab === 'clientes' && (
           <ClientesContainer supabase={supabase} />
         )}
 
-        {activeTab === 'stock' && StockContainer && (
+        {activeTab === 'stock' && (
           <StockContainer supabase={supabase} />
         )}
 
         {activeTab === 'pedidos' && (
           <div style={{ backgroundColor: '#fcfbf9', borderRadius: '10px', border: '1px solid #e5e0d8', padding: '3rem', textAlign: 'center', color: '#78716c' }}>
             <h3 style={{ margin: '0 0 0.5rem 0', color: '#2b2927' }}>🛒 Pedidos de Venta</h3>
-            <p style={{ margin: 0, fontSize: '0.9rem' }}>Sección para la gestión y seguimiento de pedidos de venta.</p>
+            <p style={{ margin: 0, fontSize: '0.9rem' }}>Sección para la gestión y seguimiento de pedidos de venta de Agromecanica.</p>
           </div>
         )}
       </main>
