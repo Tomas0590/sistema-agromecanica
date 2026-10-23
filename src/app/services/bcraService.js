@@ -1,3 +1,5 @@
+'use client';
+
 // Lógica de consulta a la API del BCRA con rotación de proxies y timeout
 export const consultarBCRACuit = async (cuitLimpio) => {
   const targetUrl = `https://api.bcra.gob.ar/centraldedeudores/v1.0/Deudas/${cuitLimpio}`;
@@ -17,7 +19,7 @@ export const consultarBCRACuit = async (cuitLimpio) => {
       clearTimeout(timeoutId);
 
       if (res.status === 404) {
-        return 1; // Sin deudas -> Situación 1 (Normal)
+        return 1;
       } else if (res.ok) {
         const data = await res.json();
         let peorSituacion = 1;
@@ -34,5 +36,5 @@ export const consultarBCRACuit = async (cuitLimpio) => {
     }
   }
 
-  return null; // Si fallan los proxies
+  return null;
 };
