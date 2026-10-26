@@ -1,82 +1,74 @@
 'use client';
 
-export const dynamic = 'force-dynamic';
-
-import { useState, useEffect } from 'react';
-import { createClient } from '@supabase/supabase-js';
-import dynamicComponent from 'next/dynamic';
-
-const Navbar = dynamicComponent(() => import('./components/Navbar'), { ssr: false });
-const ClientesContainer = dynamicComponent(() => import('./components/ClientesContainer'), { ssr: false });
-const CuentasCorrientesContainer = dynamicComponent(() => import('./components/CuentasCorrientesContainer'), { ssr: false });
-const StockContainer = dynamicComponent(() => import('./components/StockContainer'), { ssr: false });
-
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
-const supabase = createClient(supabaseUrl, supabaseAnonKey);
-
-export default function Home() {
-  const [session, setSession] = useState(null);
-  const [activeTab, setActiveTab] = useState('clientes'); // 'clientes', 'cuentas_corrientes', 'stock' o 'pedidos'
-
-  // Persistencia del estado BCRA en sesión
-  const [situacionesMap, setSituacionesMap] = useState({});
-  const [yaVerificadoBcra, setYaVerificadoBcra] = useState(false);
-
-  useEffect(() => {
-    const getSession = async () => {
-      const { data: { session } } = await supabase.auth.getSession();
-      setSession(session);
-    };
-    getSession();
-
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      setSession(session);
-    });
-
-    return () => subscription.unsubscribe();
-  }, []);
-
-  const handleSignOut = async () => {
-    await supabase.auth.signOut();
-  };
+export default function Navbar({ activeTab, setActiveTab, onLogout }) {
+  const navStyle = (tab) => ({
+    padding: '0.6rem 1.1rem',
+    borderRadius: '8px',
+    border: 'none',
+    backgroundColor: activeTab === tab ? '#15803d' : 'transparent',
+    color: activeTab === tab ? '#ffffff' : '#44403c',
+    fontWeight: 'bold',
+    fontSize: '0.875rem',
+    cursor: 'pointer',
+    transition: 'all 0.15s ease'
+  });
 
   return (
-    <div style={{ minHeight: '100vh', backgroundColor: '#f5f2eb', fontFamily: 'sans-serif' }}>
-      
-      <Navbar 
-        activeTab={activeTab} 
-        setActiveTab={setActiveTab} 
-        onLogout={handleSignOut} 
-      />
-
-      <main style={{ maxWidth: '1200px', margin: '0 auto', padding: '1.5rem' }}>
-        {activeTab === 'clientes' && (
-          <ClientesContainer 
-            supabase={supabase} 
-            situacionesMap={situacionesMap}
-            setSituacionesMap={setSituacionesMap}
-            yaVerificadoBcra={yaVerificadoBcra}
-            setYaVerificadoBcra={setYaVerificadoBcra}
+    <header style={{ backgroundColor: '#fcfbf9', borderBottom: '1px solid #e5e0d8', padding: '0.75rem 1.5rem' }}>
+      <div style={{ maxWidth: '1200px', margin: '0 auto', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        
+        {/* LOGO AGROMECANICA */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+          <img 
+            src="/logo.png" 
+            alt="Agromecanica Logo" 
+            style={{ height: '36px', width: 'auto', objectFit: 'contain' }} 
+            onError={(e) => {
+              // Si no encuentra la imagen /logo.png, muestra el icono tractor como respaldo
+              e.target.style.display = 'none';
+              if (e.target.nextSibling) e.target.nextSibling.style.display = 'inline';
+            }}
           />
-        )}
+          <span style={{ fontSize: '1.4rem', display: 'none' }}>🚜</span>
+          <h1 style={{ margin: 0, fontSize: '1.2rem', fontWeight: '900', color: '#1c1917', letterSpacing: '-0.02em' }}>
+            AGROMECANICA
+          </h1>
+        </div>
 
-        {activeTab === 'cuentas_corrientes' && (
-          <CuentasCorrientesContainer supabase={supabase} />
-        )}
+        {/* NAVEGACIÓN */}
+        <nav style={{ display: 'flex', gap: '0.35rem', backgroundColor: '#eeeae1', padding: '0.25rem', borderRadius: '10px' }}>
+          <button style={navStyle('clientes')} onClick={() => setActiveTab('clientes')}>
+            👥 Clientes
+          </button>
+          <button style={navStyle('cuentas_corrientes')} onClick={() => setActiveTab('cuentas_corrientes')}>
+            💵 Cuentas Corrientes
+          </button>
+          <button style={navStyle('stock')} onClick={() => setActiveTab('stock')}>
+            📦 Stock
+          </button>
+          <button style={navStyle('pedidos')} onClick={() => setActiveTab('pedidos')}>
+            🛒 Pedidos de Venta
+          </button>
+        </nav>
 
-        {activeTab === 'stock' && (
-          <StockContainer supabase={supabase} />
-        )}
+        {/* BOTÓN SALIR */}
+        <button
+          onClick={onLogout}
+          style={{
+            backgroundColor: '#eeeae1',
+            color: '#78716c',
+            border: '1px solid #dcd5c9',
+            padding: '0.45rem 0.85rem',
+            borderRadius: '6px',
+            fontSize: '0.8rem',
+            fontWeight: 'bold',
+            cursor: 'pointer'
+          }}
+        >
+          🚪 Salir
+        </button>
 
-        {activeTab === 'pedidos' && (
-          <div style={{ backgroundColor: '#fcfbf9', borderRadius: '10px', border: '1px solid #e5e0d8', padding: '3rem', textAlign: 'center', color: '#78716c' }}>
-            <h3 style={{ margin: '0 0 0.5rem 0', color: '#2b2927' }}>🛒 Pedidos de Venta</h3>
-            <p style={{ margin: 0, fontSize: '0.9rem' }}>Sección para la gestión y seguimiento de pedidos de venta de Agromecanica.</p>
-          </div>
-        )}
-      </main>
-
-    </div>
+      </div>
+    </header>
   );
 }
