@@ -10,7 +10,6 @@ const Navbar = dynamicComponent(() => import('./components/Navbar'), { ssr: fals
 const ClientesContainer = dynamicComponent(() => import('./components/ClientesContainer'), { ssr: false });
 const CuentasCorrientesContainer = dynamicComponent(() => import('./components/CuentasCorrientesContainer'), { ssr: false });
 const StockContainer = dynamicComponent(() => import('./components/StockContainer'), { ssr: false });
-const Login = dynamicComponent(() => import('./components/Login'), { ssr: false });
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
@@ -18,10 +17,9 @@ const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
 export default function Home() {
   const [session, setSession] = useState(null);
-  const [cargandoSesion, setCargandoSesion] = useState(true);
   const [activeTab, setActiveTab] = useState('clientes');
 
-  // Estado global para BCRA (para que no vuelva a consultar al cambiar de pestaña)
+  // Estado global para BCRA (mantiene la lectura activa al cambiar entre pestañas)
   const [situacionesMap, setSituacionesMap] = useState({});
   const [yaVerificadoBcra, setYaVerificadoBcra] = useState(false);
 
@@ -29,13 +27,11 @@ export default function Home() {
     const getSession = async () => {
       const { data: { session } } = await supabase.auth.getSession();
       setSession(session);
-      setCargandoSesion(false);
     };
     getSession();
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       setSession(session);
-      setCargandoSesion(false);
     });
 
     return () => subscription.unsubscribe();
@@ -45,23 +41,6 @@ export default function Home() {
     await supabase.auth.signOut();
   };
 
-  // 1. Mientras verifica si hay sesión iniciada
-  if (cargandoSesion) {
-    return (
-      <div style={{ minHeight: '100vh', backgroundColor: '#f5f2eb', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-        <div style={{ fontWeight: 'bold', color: '#78716c', fontSize: '1rem' }}>
-          ⏳ Cargando Agromecanica...
-        </div>
-      </div>
-    );
-  }
-
-  // 2. Si NO hay usuario logueado, muestra la pantalla de Login
-  if (!session) {
-    return <Login supabase={supabase} />;
-  }
-
-  // 3. Usuario logueado: Panel principal
   return (
     <div style={{ minHeight: '100vh', backgroundColor: '#f5f2eb', fontFamily: 'sans-serif' }}>
       
