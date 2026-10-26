@@ -33,7 +33,7 @@ export default function ClientesContainer({
     cargarClientes();
   }, []);
 
-  // 2. Disparo automático de verificación en segundo plano (Solo 1 vez al iniciar la app)
+  // 2. Disparo automático de verificación BCRA (Solo 1 vez por sesión)
   useEffect(() => {
     if (clientes.length > 0 && !yaVerificadoBcra) {
       corroborarBCRAMasivamenteSilencioso(clientes);
@@ -62,7 +62,9 @@ export default function ClientesContainer({
     if (conCuit.length === 0) return;
 
     setCargandoBCRA(true);
-    setYaVerificadoBcra(true); // Se marca para no volver a ejecutar al cambiar de pestaña
+    if (typeof setYaVerificadoBcra === 'function') {
+      setYaVerificadoBcra(true); // Se marca para no repetir al cambiar de módulo
+    }
 
     const TAMAÑO_LOTE = 5;
 
@@ -214,15 +216,46 @@ export default function ClientesContainer({
     else { setOrdenColumna(col); setOrdenAsc(true); }
   };
 
+  // LÓGICA DE FILTRADO Y ORDENADO MULTICOLUMNA
   const clientesFiltrados = clientes
     .filter((c) => {
       const t = busqueda.toLowerCase();
       const cuit = String(c.cuit_dni || c.cuit || '');
-      return (c.razon_social || '').toLowerCase().includes(t) || cuit.includes(t) || (c.direccion || '').toLowerCase().includes(t);
+      return (
+        (c.razon_social || '').toLowerCase().includes(t) ||
+        cuit.includes(t) ||
+        (c.direccion || '').toLowerCase().includes(t)
+      );
     })
     .sort((a, b) => {
-      let valA = (a[ordenColumna] || '').toString().toLowerCase();
-      let valB = (b[ordenColumna] || '').toString().toLowerCase();
+      let valA, valB;
+
+      // 1. ORDENAMIENTO POR SITUACIÓN CREDITICIA BCRA / CHEQUES
+      if (ordenColumna === 'situacion') {
+        const infoA = situacionesMap ? situacionesMap[a.id] : null;
+        const infoB = situacionesMap ? situacionesMap[b.id] : null;
+
+        const sitA = typeof infoA === 'object' ? infoA?.situacion || 1 : infoA || 1;
+        const sitB = typeof infoB === 'object' ? infoB?.situacion || 1 : infoB || 1;
+
+        const chqA = typeof infoA === 'object' ? infoA?.cheques || 0 : 0;
+        const chqB = typeof infoB === 'object' ? infoB?.cheques || 0 : 0;
+
+        // Ponderación de riesgo: situación x 10 + cheques rechazados
+        valA = sitA * 10 + chqA;
+        valB = sitB * 10 + chqB;
+
+      // 2. ORDENAMIENTO POR SALDO FUTURO DE CTA CTE
+      } else if (ordenColumna === 'saldo') {
+        valA = parseFloat(a.saldo || 0);
+        valB = parseFloat(b.saldo || 0);
+
+      // 3. ORDENAMIENTO POR TEXTO GENERAL (Razón Social, CUIT, etc.)
+      } else {
+        valA = (a[ordenColumna] || '').toString().toLowerCase();
+        valB = (b[ordenColumna] || '').toString().toLowerCase();
+      }
+
       if (valA < valB) return ordenAsc ? -1 : 1;
       if (valA > valB) return ordenAsc ? 1 : -1;
       return 0;
