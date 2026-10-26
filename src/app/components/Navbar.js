@@ -1,107 +1,63 @@
 'use client';
 
 export default function Navbar({ activeTab, setActiveTab, onLogout }) {
-  return (
-    <header
-      style={{
-        backgroundColor: '#fcfbf9',
-        border: '1px solid #e5e0d8',
-        borderRadius: '12px',
-        padding: '0.85rem 1.5rem',
-        marginBottom: '1.5rem',
-        boxShadow: '0 2px 8px rgba(0,0,0,0.04)'
-      }}
-    >
-      <div
-        style={{
-          maxWidth: '1200px',
-          margin: '0 auto',
-          display: 'flex',
-          justify: 'space-between',
-          alignItems: 'center',
-          flexWrap: 'wrap',
-          gap: '1rem'
-        }}
-      >
-        <div style={{ display: 'flex', alignItems: 'center', gap: '2rem', flexWrap: 'wrap' }}>
-          <div 
-            style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', cursor: 'pointer' }} 
-            onClick={() => setActiveTab('clientes')}
-          >
-            <img 
-              src="/logo.png" 
-              alt="Agromecanica Logo" 
-              style={{ height: '38px', width: 'auto', objectFit: 'contain' }}
-            />
-            <h1 style={{ margin: 0, fontSize: '1.35rem', color: '#dc2626', fontWeight: '800', letterSpacing: '-0.02em' }}>
-              Agromecanica
-            </h1>
-          </div>
+  const navStyle = (tab) => ({
+    padding: '0.6rem 1.1rem',
+    borderRadius: '8px',
+    border: 'none',
+    backgroundColor: activeTab === tab ? '#15803d' : 'transparent',
+    color: activeTab === tab ? '#ffffff' : '#44403c',
+    fontWeight: 'bold',
+    fontSize: '0.875rem',
+    cursor: 'pointer',
+    transition: 'all 0.15s ease'
+  });
 
-          <nav style={{ display: 'flex', gap: '0.4rem' }}>
-            <button
-              onClick={() => setActiveTab('clientes')}
-              style={{
-                backgroundColor: activeTab === 'clientes' ? '#eeeae1' : 'transparent',
-                color: activeTab === 'clientes' ? '#1c1917' : '#78716c',
-                border: 'none',
-                padding: '0.5rem 0.9rem',
-                borderRadius: '8px',
-                cursor: 'pointer',
-                fontWeight: 'bold',
-                fontSize: '0.875rem'
-              }}
-            >
-              👥 Clientes
-            </button>
-            <button
-              onClick={() => setActiveTab('stock')}
-              style={{
-                backgroundColor: activeTab === 'stock' ? '#eeeae1' : 'transparent',
-                color: activeTab === 'stock' ? '#1c1917' : '#78716c',
-                border: 'none',
-                padding: '0.5rem 0.9rem',
-                borderRadius: '8px',
-                cursor: 'pointer',
-                fontWeight: 'bold',
-                fontSize: '0.875rem'
-              }}
-            >
-              📦 Stock e Inventario
-            </button>
-            <button
-              onClick={() => setActiveTab('pedidos')}
-              style={{
-                backgroundColor: activeTab === 'pedidos' ? '#eeeae1' : 'transparent',
-                color: activeTab === 'pedidos' ? '#1c1917' : '#78716c',
-                border: 'none',
-                padding: '0.5rem 0.9rem',
-                borderRadius: '8px',
-                cursor: 'pointer',
-                fontWeight: 'bold',
-                fontSize: '0.875rem'
-              }}
-            >
-              🛒 Pedidos de Venta
-            </button>
-          </nav>
+  return (
+    <header style={{ backgroundColor: '#fcfbf9', borderBottom: '1px solid #e5e0d8', padding: '0.75rem 1.5rem' }}>
+      <div style={{ maxWidth: '1200px', margin: '0 auto', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        
+        {/* LOGO AGROMECANICA */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+          <span style={{ fontSize: '1.4rem' }}>🚜</span>
+          <h1 style={{ margin: 0, fontSize: '1.2rem', fontWeight: '900', color: '#1c1917', letterSpacing: '-0.02em' }}>
+            AGROMECANICA
+          </h1>
         </div>
 
+        {/* NAVEGACIÓN EN ORDEN SOLICITADO */}
+        <nav style={{ display: 'flex', gap: '0.35rem', backgroundColor: '#eeeae1', padding: '0.25rem', borderRadius: '10px' }}>
+          <button style={navStyle('clientes')} onClick={() => setActiveTab('clientes')}>
+            👥 Clientes
+          </button>
+          <button style={navStyle('cuentas_corrientes')} onClick={() => setActiveTab('cuentas_corrientes')}>
+            💵 Cuentas Corrientes
+          </button>
+          <button style={navStyle('stock')} onClick={() => setActiveTab('stock')}>
+            📦 Stock
+          </button>
+          <button style={navStyle('pedidos')} onClick={() => setActiveTab('pedidos')}>
+            🛒 Pedidos de Venta
+          </button>
+        </nav>
+
+        {/* BOTÓN SALIR */}
         <button
           onClick={onLogout}
           style={{
             backgroundColor: '#eeeae1',
+            color: '#78716c',
             border: '1px solid #dcd5c9',
-            color: '#44403c',
             padding: '0.45rem 0.85rem',
             borderRadius: '6px',
-            cursor: 'pointer',
             fontSize: '0.8rem',
-            fontWeight: 'bold'
+            fontWeight: 'bold',
+            cursor: 'pointer'
           }}
         >
-          🚪 Cerrar Sesión
+          🚪 Salir
         </button>
+
       </div>
     </header>
   );
