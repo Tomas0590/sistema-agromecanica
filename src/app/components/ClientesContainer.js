@@ -28,11 +28,12 @@ export default function ClientesContainer({
   const [guardandoEdicion, setGuardandoEdicion] = useState(false);
   const [mostrarModalNuevo, setMostrarModalNuevo] = useState(false);
 
+  // 1. Carga inicial de clientes desde Supabase
   useEffect(() => {
     cargarClientes();
   }, []);
 
-  // 🔴 VERIFICACIÓN BCRA: Solo corre la PRIMERA vez al cargar la app
+  // 2. Disparo automático de verificación en segundo plano (Solo 1 vez al iniciar la app)
   useEffect(() => {
     if (clientes.length > 0 && !yaVerificadoBcra) {
       corroborarBCRAMasivamenteSilencioso(clientes);
@@ -52,7 +53,7 @@ export default function ClientesContainer({
     }
   };
 
-  // VERIFICACIÓN MASIVA SILENCIOSA
+  // VERIFICACIÓN MASIVA RÁPIDA (En lotes de 5 en paralelo)
   const corroborarBCRAMasivamenteSilencioso = async (listaClientes) => {
     const conCuit = listaClientes.filter(
       (c) => String(c.cuit_dni || c.cuit || '').replace(/\D/g, '').length === 11
@@ -61,42 +62,46 @@ export default function ClientesContainer({
     if (conCuit.length === 0) return;
 
     setCargandoBCRA(true);
-    setYaVerificadoBcra(true); // 👈 Marcamos inmediatamente que la verificación masiva ya inició
+    setYaVerificadoBcra(true); // Se marca para no volver a ejecutar al cambiar de pestaña
 
-    for (let i = 0; i < conCuit.length; i++) {
-      const cli = conCuit[i];
-      const cuitLimpio = String(cli.cuit_dni || cli.cuit).replace(/\D/g, '');
-      setProgresoBcra(`(${i + 1}/${conCuit.length})`);
+    const TAMAÑO_LOTE = 5;
 
-      try {
-        const res = await fetch(`/api/bcra?cuit=${cuitLimpio}`);
-        if (res.ok) {
-          const data = await res.json();
-          setSituacionesMap((prev) => ({
-            ...prev,
-            [cli.id]: {
-              situacion: data.situacion || 1,
-              cheques: data.chequesRechazados || 0
+    for (let i = 0; i < conCuit.length; i += TAMAÑO_LOTE) {
+      const lote = conCuit.slice(i, i + TAMAÑO_LOTE);
+      setProgresoBcra(`(${Math.min(i + TAMAÑO_LOTE, conCuit.length)}/${conCuit.length})`);
+
+      await Promise.all(
+        lote.map(async (cli) => {
+          const cuitLimpio = String(cli.cuit_dni || cli.cuit).replace(/\D/g, '');
+          try {
+            const res = await fetch(`/api/bcra?cuit=${cuitLimpio}`);
+            if (res.ok) {
+              const data = await res.json();
+              setSituacionesMap((prev) => ({
+                ...prev,
+                [cli.id]: {
+                  situacion: data.situacion || 1,
+                  cheques: data.chequesRechazados || 0
+                }
+              }));
+            } else if (res.status === 404) {
+              setSituacionesMap((prev) => ({
+                ...prev,
+                [cli.id]: { situacion: 1, cheques: 0 }
+              }));
             }
-          }));
-        } else if (res.status === 404) {
-          setSituacionesMap((prev) => ({
-            ...prev,
-            [cli.id]: { situacion: 1, cheques: 0 }
-          }));
-        }
-      } catch (e) {
-        console.error(`Error consultando BCRA para ${cli.razon_social}:`, e);
-      }
-
-      await new Promise((r) => setTimeout(r, 150));
+          } catch (e) {
+            console.error(`Error consultando BCRA para ${cli.razon_social}:`, e);
+          }
+        })
+      );
     }
 
     setCargandoBCRA(false);
     setProgresoBcra('');
   };
 
-  // VERIFICACIÓN MANUAL INDIVIDUAL (boton de reevaluar o desde el modal)
+  // VERIFICACIÓN MANUAL INDIVIDUAL
   const corroborarBCRAIndividual = async (cliente, e) => {
     if (e) e.stopPropagation();
     const cuitLimpio = String(cliente.cuit_dni || cliente.cuit || '').replace(/\D/g, '');
