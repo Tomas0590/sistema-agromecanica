@@ -27,7 +27,21 @@ export default function TablaClientes({
             >
               CUIT / DNI {ordenColumna === 'cuit_dni' ? (ordenAsc ? '▲' : '▼') : ''}
             </th>
-            <th style={{ padding: '0.75rem 1rem' }}>Situación Crediticia</th>
+            <th
+              onClick={() => cambiarOrden('situacion')}
+              style={{ padding: '0.75rem 1rem', cursor: 'pointer', userSelect: 'none' }}
+            >
+              Situación Crediticia / Riesgo {ordenColumna === 'situacion' ? (ordenAsc ? '▲' : '▼') : ''}
+            </th>
+            {/* Preparado para ordenar por Saldo en el futuro */}
+            {/* 
+            <th
+              onClick={() => cambiarOrden('saldo')}
+              style={{ padding: '0.75rem 1rem', cursor: 'pointer', userSelect: 'none', textAlign: 'right' }}
+            >
+              Saldo Cta. Cte. {ordenColumna === 'saldo' ? (ordenAsc ? '▲' : '▼') : ''}
+            </th>
+            */}
             <th style={{ padding: '0.75rem 1rem', textAlign: 'right' }}>Acciones</th>
           </tr>
         </thead>
@@ -46,7 +60,7 @@ export default function TablaClientes({
               const infoBcra = situacionesMap ? situacionesMap[clienteId] : null;
               const cargando = cargandoIndividualId === clienteId;
 
-              // Manejo ultra seguro de tipos
+              // Parseo seguro de BCRA
               let sit = null;
               let cheques = 0;
 
@@ -64,7 +78,14 @@ export default function TablaClientes({
               return (
                 <tr
                   key={clienteId}
-                  style={{ borderBottom: '1px solid #eeeae1', transition: 'background-color 0.15s' }}
+                  onClick={() => setClienteDetalle(cliente)} // 👈 ABRIR DETALLE AL CLICKEAR EN CUALQUIER PARTE DE LA FILA
+                  style={{
+                    borderBottom: '1px solid #eeeae1',
+                    cursor: 'pointer',
+                    transition: 'background-color 0.15s'
+                  }}
+                  onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = '#f5f2eb')}
+                  onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = 'transparent')}
                 >
                   <td style={{ padding: '0.85rem 1rem', fontWeight: 'bold', color: '#1c1917' }}>
                     👤 {cliente.razon_social || 'PENDIENTE / SIN NOMBRE'}
@@ -81,7 +102,10 @@ export default function TablaClientes({
                       <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
                         <span style={{ fontSize: '0.78rem', color: '#a8a29e' }}>Sin verificar</span>
                         <button
-                          onClick={(e) => corroborarBCRAIndividual(cliente, e)}
+                          onClick={(e) => {
+                            e.stopPropagation(); // Evita abrir el modal si solo se toca el icono de refrescar
+                            corroborarBCRAIndividual(cliente, e);
+                          }}
                           style={{ border: 'none', background: 'transparent', cursor: 'pointer', fontSize: '0.9rem' }}
                           title="Verificar en BCRA"
                         >
@@ -90,7 +114,7 @@ export default function TablaClientes({
                       </div>
                     ) : (
                       <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem', flexWrap: 'wrap' }}>
-                        {/* INSIGNIA SITUACIÓN DEUDA */}
+                        {/* BADGE SITUACIÓN */}
                         <span
                           style={{
                             padding: '0.25rem 0.65rem',
@@ -107,7 +131,7 @@ export default function TablaClientes({
                           {sit === 1 ? 'Sit. 1 ✅' : `Sit. ${sit} ⚠️ ALERTA`}
                         </span>
 
-                        {/* INSIGNIA CHEQUES RECHAZADOS */}
+                        {/* BADGE CHEQUES RECHAZADOS */}
                         {cheques > 0 ? (
                           <span
                             title={`${cheques} cheque(s) rechazado(s) registrado(s) en BCRA`}
@@ -142,9 +166,11 @@ export default function TablaClientes({
                           </span>
                         )}
 
-                        {/* BOTÓN REEVALUAR */}
                         <button
-                          onClick={(e) => corroborarBCRAIndividual(cliente, e)}
+                          onClick={(e) => {
+                            e.stopPropagation(); // Evita abrir el modal si solo se toca el icono de refrescar
+                            corroborarBCRAIndividual(cliente, e);
+                          }}
                           style={{ border: 'none', background: 'transparent', cursor: 'pointer', fontSize: '0.85rem', padding: '0 2px' }}
                           title="Reevaluar BCRA"
                         >
@@ -155,7 +181,10 @@ export default function TablaClientes({
                   </td>
                   <td style={{ padding: '0.85rem 1rem', textAlign: 'right' }}>
                     <button
-                      onClick={() => setClienteDetalle(cliente)}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setClienteDetalle(cliente);
+                      }}
                       style={{
                         padding: '0.35rem 0.75rem',
                         borderRadius: '6px',
@@ -167,7 +196,7 @@ export default function TablaClientes({
                         fontSize: '0.8rem'
                       }}
                     >
-                      ✏️ Editar
+                      ✏️ Ver / Editar
                     </button>
                   </td>
                 </tr>
