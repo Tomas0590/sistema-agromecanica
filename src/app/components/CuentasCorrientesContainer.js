@@ -116,7 +116,6 @@ export default function CuentasCorrientesContainer({ supabase }) {
             <thead>
               <tr style={{ backgroundColor: '#eeeae1', color: '#44403c', borderBottom: '2px solid #dcd5c9' }}>
                 <th style={{ padding: '0.75rem 1rem' }}>Cliente</th>
-                <th style={{ padding: '0.75rem 1rem' }}>CUIT / DNI</th>
                 <th style={{ padding: '0.75rem 1rem', textAlign: 'right' }}>Saldo Total</th>
                 <th style={{ padding: '0.75rem 1rem', textAlign: 'right' }}>Deuda Vencida</th>
                 <th style={{ padding: '0.75rem 1rem', textAlign: 'center' }}>Últ. Movimiento</th>
@@ -126,13 +125,13 @@ export default function CuentasCorrientesContainer({ supabase }) {
             <tbody>
               {cargando ? (
                 <tr>
-                  <td colSpan={6} style={{ padding: '2rem', textAlign: 'center', color: '#78716c' }}>
+                  <td colSpan={5} style={{ padding: '2rem', textAlign: 'center', color: '#78716c' }}>
                     ⏳ Cargando saldos de cuentas corrientes...
                   </td>
                 </tr>
               ) : saldosFiltrados.length === 0 ? (
                 <tr>
-                  <td colSpan={6} style={{ padding: '2rem', textAlign: 'center', color: '#78716c' }}>
+                  <td colSpan={5} style={{ padding: '2rem', textAlign: 'center', color: '#78716c' }}>
                     No se encontraron registros de cuentas corrientes.
                   </td>
                 </tr>
@@ -145,9 +144,6 @@ export default function CuentasCorrientesContainer({ supabase }) {
                     <tr key={cliente.cliente_id} style={{ borderBottom: '1px solid #eeeae1' }}>
                       <td style={{ padding: '0.85rem 1rem', fontWeight: 'bold', color: '#1c1917' }}>
                         👤 {cliente.razon_social || 'SIN NOMBRE'}
-                      </td>
-                      <td style={{ padding: '0.85rem 1rem', fontFamily: 'monospace', color: '#57534e' }}>
-                        {cliente.cuit_dni || 'Sin CUIT'}
                       </td>
                       <td style={{ padding: '0.85rem 1rem', textAlign: 'right', fontWeight: 'bold', color: saldo > 0 ? '#15803d' : '#78716c' }}>
                         $ {saldo.toLocaleString('es-AR', { minimumFractionDigits: 2 })}
