@@ -8,6 +8,7 @@ import dynamicComponent from 'next/dynamic';
 
 const Navbar = dynamicComponent(() => import('./components/Navbar'), { ssr: false });
 const ClientesContainer = dynamicComponent(() => import('./components/ClientesContainer'), { ssr: false });
+const CuentasCorrientesContainer = dynamicComponent(() => import('./components/CuentasCorrientesContainer'), { ssr: false });
 const StockContainer = dynamicComponent(() => import('./components/StockContainer'), { ssr: false });
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
@@ -16,9 +17,9 @@ const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
 export default function Home() {
   const [session, setSession] = useState(null);
-  const [activeTab, setActiveTab] = useState('clientes');
+  const [activeTab, setActiveTab] = useState('clientes'); // 'clientes', 'cuentas_corrientes', 'stock' o 'pedidos'
 
-  // Guardamos el estado del BCRA y si ya se hizo la verificación inicial a nivel global
+  // Persistencia del estado BCRA en sesión
   const [situacionesMap, setSituacionesMap] = useState({});
   const [yaVerificadoBcra, setYaVerificadoBcra] = useState(false);
 
@@ -58,6 +59,10 @@ export default function Home() {
             yaVerificadoBcra={yaVerificadoBcra}
             setYaVerificadoBcra={setYaVerificadoBcra}
           />
+        )}
+
+        {activeTab === 'cuentas_corrientes' && (
+          <CuentasCorrientesContainer supabase={supabase} />
         )}
 
         {activeTab === 'stock' && (
