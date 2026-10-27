@@ -2,13 +2,17 @@
 
 import { useState, useEffect } from 'react';
 import ModalComprobante from './ModalComprobante';
+import ModalResumenCliente from './ModalResumenCliente'; // 👈 Importamos el modal de resumen
 
 export default function CuentasCorrientesContainer({ supabase }) {
   const [saldosClientes, setSaldosClientes] = useState([]);
   const [cargando, setCargando] = useState(true);
   const [busqueda, setBusqueda] = useState('');
   const [soloDeudores, setSoloDeudores] = useState(false);
+  
+  // Modales
   const [mostrarModalNuevo, setMostrarModalNuevo] = useState(false);
+  const [clienteSeleccionadoResumen, setClienteSeleccionadoResumen] = useState(null); // 👈 Estado para el resumen
 
   useEffect(() => {
     cargarSaldos();
@@ -32,7 +36,6 @@ export default function CuentasCorrientesContainer({ supabase }) {
     }
   };
 
-  // Filtrado por texto (Razón Social o CUIT) y checkbox de solo deudores
   const saldosFiltrados = saldosClientes.filter((c) => {
     const matchTexto = 
       (c.razon_social || '').toLowerCase().includes(busqueda.toLowerCase()) ||
@@ -41,7 +44,6 @@ export default function CuentasCorrientesContainer({ supabase }) {
     return matchTexto && matchDeuda;
   });
 
-  // Totales acumulados para las tarjetas superiores
   const totalAdeudadoGeneral = saldosClientes.reduce((acc, c) => acc + parseFloat(c.saldo_total || 0), 0);
   const totalVencidoGeneral = saldosClientes.reduce((acc, c) => acc + parseFloat(c.saldo_vencido || 0), 0);
 
@@ -159,6 +161,7 @@ export default function CuentasCorrientesContainer({ supabase }) {
                       </td>
                       <td style={{ padding: '0.85rem 1rem', textAlign: 'right' }}>
                         <button
+                          onClick={() => setClienteSeleccionadoResumen(cliente)} // 👈 ABRIR RESUMEN DEL CLIENTE
                           style={{
                             padding: '0.35rem 0.75rem',
                             borderRadius: '6px',
@@ -189,6 +192,14 @@ export default function CuentasCorrientesContainer({ supabase }) {
         supabase={supabase}
         clientes={saldosClientes}
         onGuardado={cargarSaldos}
+      />
+
+      {/* MODAL RESUMEN DE CUENTA */}
+      <ModalResumenCliente
+        mostrar={Boolean(clienteSeleccionadoResumen)}
+        onClose={() => setClienteSeleccionadoResumen(null)}
+        cliente={clienteSeleccionadoResumen}
+        supabase={supabase}
       />
     </div>
   );
