@@ -2,17 +2,17 @@
 
 import { useState, useEffect } from 'react';
 import ModalComprobante from './ModalComprobante';
-import ModalResumenCliente from './ModalResumenCliente'; // 👈 Importamos el modal de resumen
+import ModalResumenCliente from './ModalResumenCliente';
 
 export default function CuentasCorrientesContainer({ supabase }) {
   const [saldosClientes, setSaldosClientes] = useState([]);
   const [cargando, setCargando] = useState(true);
   const [busqueda, setBusqueda] = useState('');
   const [soloDeudores, setSoloDeudores] = useState(false);
-  
-  // Modales
+
+  // Estados de modales
   const [mostrarModalNuevo, setMostrarModalNuevo] = useState(false);
-  const [clienteSeleccionadoResumen, setClienteSeleccionadoResumen] = useState(null); // 👈 Estado para el resumen
+  const [clienteSeleccionadoResumen, setClienteSeleccionadoResumen] = useState(null);
 
   useEffect(() => {
     cargarSaldos();
@@ -36,6 +36,7 @@ export default function CuentasCorrientesContainer({ supabase }) {
     }
   };
 
+  // Filtrado por texto (Razón Social o CUIT) y por clientes con deuda activa
   const saldosFiltrados = saldosClientes.filter((c) => {
     const matchTexto = 
       (c.razon_social || '').toLowerCase().includes(busqueda.toLowerCase()) ||
@@ -44,6 +45,7 @@ export default function CuentasCorrientesContainer({ supabase }) {
     return matchTexto && matchDeuda;
   });
 
+  // Totales acumulados para las tarjetas superiores
   const totalAdeudadoGeneral = saldosClientes.reduce((acc, c) => acc + parseFloat(c.saldo_total || 0), 0);
   const totalVencidoGeneral = saldosClientes.reduce((acc, c) => acc + parseFloat(c.saldo_vencido || 0), 0);
 
@@ -94,7 +96,7 @@ export default function CuentasCorrientesContainer({ supabase }) {
         </div>
       </div>
 
-      {/* CONTENEDOR TABLA */}
+      {/* CONTENEDOR TABLA DE SALDOS */}
       <div style={{ backgroundColor: '#fcfbf9', borderRadius: '10px', border: '1px solid #e5e0d8', padding: '1.25rem' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem', flexWrap: 'wrap', gap: '0.75rem' }}>
           <input
@@ -161,7 +163,7 @@ export default function CuentasCorrientesContainer({ supabase }) {
                       </td>
                       <td style={{ padding: '0.85rem 1rem', textAlign: 'right' }}>
                         <button
-                          onClick={() => setClienteSeleccionadoResumen(cliente)} // 👈 ABRIR RESUMEN DEL CLIENTE
+                          onClick={() => setClienteSeleccionadoResumen(cliente)}
                           style={{
                             padding: '0.35rem 0.75rem',
                             borderRadius: '6px',
@@ -200,6 +202,7 @@ export default function CuentasCorrientesContainer({ supabase }) {
         onClose={() => setClienteSeleccionadoResumen(null)}
         cliente={clienteSeleccionadoResumen}
         supabase={supabase}
+        onActualizarSaldos={cargarSaldos}
       />
     </div>
   );
