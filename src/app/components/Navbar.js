@@ -1,53 +1,67 @@
 'use client';
 
 export default function Navbar({ activeTab, setActiveTab, onLogout }) {
-  const navStyle = (tab) => ({
-    padding: '0.6rem 1.1rem',
-    borderRadius: '8px',
-    border: 'none',
-    backgroundColor: activeTab === tab ? '#15803d' : 'transparent',
-    color: activeTab === tab ? '#ffffff' : '#44403c',
-    fontWeight: 'bold',
-    fontSize: '0.875rem',
-    cursor: 'pointer',
-    transition: 'all 0.15s ease'
-  });
+  const navItems = [
+    { id: 'clientes', label: '👥 Clientes' },
+    { id: 'cuentas_corrientes', label: '📊 Cuentas Corrientes' },
+    { id: 'cartera_valores', label: '💼 Cartera de Valores' }, // 👈 Nuevo módulo
+    { id: 'stock', label: '📦 Stock' },
+    { id: 'pedidos', label: '🛒 Pedidos de Venta' },
+  ];
 
   return (
-    <header style={{ backgroundColor: '#fcfbf9', borderBottom: '1px solid #e5e0d8', padding: '0.75rem 1.5rem' }}>
-      <div style={{ maxWidth: '1200px', margin: '0 auto', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+    <header style={{ backgroundColor: '#1c1917', color: '#fff', borderBottom: '3px solid #15803d', padding: '0.75rem 1.5rem' }}>
+      <div style={{ maxWidth: '1200px', margin: '0 auto', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem' }}>
         
         {/* LOGO AGROMECANICA */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-          <span style={{ fontSize: '1.4rem' }}>🚜</span>
-          <h1 style={{ margin: 0, fontSize: '1.2rem', fontWeight: '900', color: '#1c1917', letterSpacing: '-0.02em' }}>
-            AGROMECANICA
-          </h1>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+          <img 
+            src="/logo.png" 
+            alt="Agromecanica Logo" 
+            style={{ height: '38px', objectFit: 'contain' }} 
+            onError={(e) => { e.target.style.display = 'none'; }} 
+          />
+          <div>
+            <h1 style={{ margin: 0, fontSize: '1.25rem', fontWeight: '900', color: '#ffffff', letterSpacing: '0.5px' }}>
+              AGROMECANICA
+            </h1>
+            <span style={{ fontSize: '0.75rem', color: '#a8a29e' }}>Sistema de Gestión Agropecuaria</span>
+          </div>
         </div>
 
-        {/* NAVEGACIÓN EN ORDEN SOLICITADO */}
-        <nav style={{ display: 'flex', gap: '0.35rem', backgroundColor: '#eeeae1', padding: '0.25rem', borderRadius: '10px' }}>
-          <button style={navStyle('clientes')} onClick={() => setActiveTab('clientes')}>
-            👥 Clientes
-          </button>
-          <button style={navStyle('cuentas_corrientes')} onClick={() => setActiveTab('cuentas_corrientes')}>
-            💵 Cuentas Corrientes
-          </button>
-          <button style={navStyle('stock')} onClick={() => setActiveTab('stock')}>
-            📦 Stock
-          </button>
-          <button style={navStyle('pedidos')} onClick={() => setActiveTab('pedidos')}>
-            🛒 Pedidos de Venta
-          </button>
+        {/* MENÚ DE NAVEGACIÓN */}
+        <nav style={{ display: 'flex', gap: '0.35rem', flexWrap: 'wrap' }}>
+          {navItems.map((item) => {
+            const isActive = activeTab === item.id;
+            return (
+              <button
+                key={item.id}
+                onClick={() => setActiveTab(item.id)}
+                style={{
+                  backgroundColor: isActive ? '#15803d' : 'transparent',
+                  color: isActive ? '#ffffff' : '#d6d3d1',
+                  border: 'none',
+                  padding: '0.55rem 0.85rem',
+                  borderRadius: '6px',
+                  fontWeight: isActive ? 'bold' : 'normal',
+                  fontSize: '0.85rem',
+                  cursor: 'pointer',
+                  transition: 'all 0.15s ease'
+                }}
+              >
+                {item.label}
+              </button>
+            );
+          })}
         </nav>
 
         {/* BOTÓN SALIR */}
         <button
           onClick={onLogout}
           style={{
-            backgroundColor: '#eeeae1',
-            color: '#78716c',
-            border: '1px solid #dcd5c9',
+            backgroundColor: '#44403c',
+            color: '#f5f5f4',
+            border: 'none',
             padding: '0.45rem 0.85rem',
             borderRadius: '6px',
             fontSize: '0.8rem',
