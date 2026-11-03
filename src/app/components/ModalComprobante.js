@@ -10,7 +10,7 @@ export default function ModalComprobante({ mostrar, onClose, supabase, clientes 
   const [numero, setNumero] = useState('');
   const [fechaEmision, setFechaEmision] = useState(new Date().toISOString().split('T')[0]);
   const [fechaVencimiento, setFechaVencimiento] = useState('');
-  const [montoFactura, setMontoFactura] = useState(''); // Usado cuando es Factura / ND / NC
+  const [montoFactura, setMontoFactura] = useState('');
   const [observaciones, setObservaciones] = useState('');
   const [guardando, setGuardando] = useState(false);
 
@@ -31,7 +31,6 @@ export default function ModalComprobante({ mostrar, onClose, supabase, clientes 
       id: Date.now(),
       metodo: tipoMedio, // 'EFECTIVO', 'TRANSFERENCIA', 'CHEQUE_FISICO', 'ECHEQ'
       monto: '',
-      // Datos extra si es cheque
       numero: '',
       banco: '',
       cuit_emisor: '',
@@ -43,7 +42,13 @@ export default function ModalComprobante({ mostrar, onClose, supabase, clientes 
   };
 
   const actualizarMedio = (id, campo, valor) => {
-    setMediosPago(mediosPago.map(m => m.id === id ? { ...m, [campo]: valor } : m));
+    // Si es el campo 'numero' y es un cheque, limitamos a 8 caracteres únicamente
+    let valorFinal = valor;
+    if (campo === 'numero') {
+      valorFinal = valor.slice(0, 8);
+    }
+
+    setMediosPago(mediosPago.map(m => m.id === id ? { ...m, [campo]: valorFinal } : m));
   };
 
   const eliminarMedio = (id) => {
@@ -68,19 +73,16 @@ export default function ModalComprobante({ mostrar, onClose, supabase, clientes 
 
     setGuardando(true);
 
-    // 1. Determinar Debe/Haber
     const esDebe = ['FACTURA_A', 'FACTURA_B', 'FACTURA_C', 'NOTA_DEBITO'].includes(tipo);
     const debeValor = esDebe ? montoTotalOperacion : 0;
     const haberValor = !esDebe ? montoTotalOperacion : 0;
 
-    // Resumen de medios de pago para la observación del comprobante
     let obsDetalle = observaciones;
     if (esCobranza && mediosPago.length > 0) {
       const resumenMedios = mediosPago.map(m => `${m.metodo}: $${m.monto}`).join(' | ');
       obsDetalle = observaciones ? `${observaciones} (${resumenMedios})` : resumenMedios;
     }
 
-    // 2. Insertar Comprobante en CC
     const { data: compData, error: compError } = await supabase
       .from('comprobantes_cc')
       .insert({
@@ -102,7 +104,6 @@ export default function ModalComprobante({ mostrar, onClose, supabase, clientes 
       return;
     }
 
-    // 3. Si es cobranza, guardar cada cheque/echeq en la tabla de cartera
     if (esCobranza && compData) {
       const chequesAGuardar = mediosPago
         .filter(m => m.metodo === 'CHEQUE_FISICO' || m.metodo === 'ECHEQ')
@@ -251,7 +252,6 @@ export default function ModalComprobante({ mostrar, onClose, supabase, clientes 
             )}
           </div>
 
-          {/* SI ES FACTURA / ND / NC -> MONTO DIRECTO */}
           {!esCobranza && (
             <div>
               <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 'bold', color: '#57534e', marginBottom: '0.2rem' }}>Importe ($) *</label>
@@ -267,7 +267,6 @@ export default function ModalComprobante({ mostrar, onClose, supabase, clientes 
             </div>
           )}
 
-          {/* SI ES COBRANZA -> SECCIÓN MULTIMEDIO DE PAGO */}
           {esCobranza && (
             <div style={{ backgroundColor: '#f5f2eb', border: '1px solid #e5e0d8', borderRadius: '8px', padding: '1rem', marginTop: '0.5rem' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
@@ -313,13 +312,14 @@ export default function ModalComprobante({ mostrar, onClose, supabase, clientes 
                         {esCheque && (
                           <>
                             <div>
-                              <label style={{ fontSize: '0.7rem', color: '#78716c', fontWeight: 'bold' }}>N° Cheque</label>
+                              <label style={{ fontSize: '0.7rem', color: '#78716c', fontWeight: 'bold' }}>N° Cheque (8 dígs.)</label>
                               <input
                                 type="text"
-                                placeholder="8 dígitos"
+                                maxLength={8} // 👈 Limita tipeo a 8 caracteres máximo
+                                placeholder="12345678"
                                 value={m.numero}
                                 onChange={(e) => actualizarMedio(m.id, 'numero', e.target.value)}
-                                style={{ width: '100%', padding: '0.4rem', borderRadius: '4px', border: '1px solid #dcd5c9', boxSizing: 'border-box' }}
+                                style={{ width: '100%', padding: '0.4rem', borderRadius: '4px', border: '1px solid #dcd5c9', boxSizing: 'border-box', fontFamily: 'monospace' }}
                               />
                             </div>
                             <div>
