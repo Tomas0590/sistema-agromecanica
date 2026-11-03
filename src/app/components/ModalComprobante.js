@@ -9,6 +9,7 @@ export default function ModalComprobante({ mostrar, onClose, supabase, clientes 
   const [clienteId, setClienteId] = useState('');
   const [tipo, setTipo] = useState('RECIBO_COBRANZA');
   const [numero, setNumero] = useState('');
+  const [cargandoNumero, setCargandoNumero] = useState(false);
   const [fechaEmision, setFechaEmision] = useState(new Date().toISOString().split('T')[0]);
   const [fechaVencimiento, setFechaVencimiento] = useState('');
   const [montoFactura, setMontoFactura] = useState('');
@@ -27,6 +28,13 @@ export default function ModalComprobante({ mostrar, onClose, supabase, clientes 
     setMounted(true);
   }, []);
 
+  // AUTO-CALCULAR PRÓXIMO NÚMERO AL ABRIR O CAMBIAR EL TIPO DE COMPROBANTE
+  useEffect(() => {
+    if (mostrar) {
+      obtenerProximoNumero(tipo);
+    }
+  }, [mostrar, tipo]);
+
   useEffect(() => {
     if (clienteId && tipo === 'RECIBO_COBRANZA') {
       cargarFacturasPendientes(clienteId);
@@ -39,6 +47,41 @@ export default function ModalComprobante({ mostrar, onClose, supabase, clientes 
   if (!mostrar || !mounted) return null;
 
   const esCobranza = tipo === 'RECIBO_COBRANZA';
+
+  // Buscar el último número registrado para sugerir correlatividad
+  const obtenerProximoNumero = async (tipoComprobante) => {
+    setCargandoNumero(true);
+    try {
+      const { data, error } = await supabase
+        .from('comprobantes_cc')
+        .select('numero')
+        .eq('tipo', tipoComprobante)
+        .not('numero', 'is', null)
+        .order('created_at', { ascending: false })
+        .limit(20);
+
+      if (!error && data && data.length > 0) {
+        // Extraer los valores numéricos limpios para hallar el máximo histórico
+        const numerosExistentes = data
+          .map(d => parseInt(String(d.numero).replace(/\D/g, ''), 10))
+          .filter(n => !isNaN(n));
+
+        if (numerosExistentes.length > 0) {
+          const maxNum = Math.max(...numerosExistentes);
+          setNumero(String(maxNum + 1));
+        } else {
+          setNumero('1');
+        }
+      } else {
+        setNumero('1');
+      }
+    } catch (e) {
+      console.error('Error calculando próximo número:', e);
+      setNumero('1');
+    } finally {
+      setCargandoNumero(false);
+    }
+  };
 
   const cargarFacturasPendientes = async (idCli) => {
     const { data, error } = await supabase
@@ -246,8 +289,16 @@ export default function ModalComprobante({ mostrar, onClose, supabase, clientes 
               </div>
 
               <div>
-                <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 'bold', color: '#57534e', marginBottom: '0.2rem' }}>N° Comprobante</label>
-                <input type="text" placeholder="0001-00001234" value={numero} onChange={(e) => setNumero(e.target.value)} style={{ width: '100%', padding: '0.6rem', borderRadius: '6px', border: '1px solid #dcd5c9', background: '#fff', boxSizing: 'border-box' }} />
+                <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 'bold', color: '#57534e', marginBottom: '0.2rem' }}>
+                  N° Comprobante {cargandoNumero && <span style={{ color: '#78716c', fontWeight: 'normal' }}>(autocalculando...)</span>}
+                </label>
+                <input
+                  type="text"
+                  placeholder="Ej: 1"
+                  value={numero}
+                  onChange={(e) => setNumero(e.target.value)}
+                  style={{ width: '100%', padding: '0.6rem', borderRadius: '6px', border: '1px solid #dcd5c9', background: '#fff', boxSizing: 'border-box', fontWeight: 'bold' }}
+                />
               </div>
             </div>
 
