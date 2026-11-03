@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
+import ModalReciboPDF from './ModalReciboPDF';
 
 export default function ModalComprobante({ mostrar, onClose, supabase, clientes = [], onGuardado = () => {} }) {
   const [mounted, setMounted] = useState(false);
@@ -14,22 +15,50 @@ export default function ModalComprobante({ mostrar, onClose, supabase, clientes 
   const [observaciones, setObservaciones] = useState('');
   const [guardando, setGuardando] = useState(false);
 
-  // ESTADO PARA MEDIOS DE PAGO EN RECIBOS
+  // ESTADO MEDIOS PAGO Y FACTURAS PENDIENTES
   const [mediosPago, setMediosPago] = useState([]);
+  const [facturasPendientes, setFacturasPendientes] = useState([]);
+  const [facturasSeleccionadas, setFacturasSeleccionadas] = useState({}); // { [facturaId]: montoACancelar }
+
+  // ESTADO PARA PDF GENERADO
+  const [reciboGenerado, setReciboGenerado] = useState(null);
 
   useEffect(() => {
     setMounted(true);
   }, []);
 
+  useEffect(() => {
+    if (clienteId && tipo === 'RECIBO_COBRANZA') {
+      cargarFacturasPendientes(clienteId);
+    } else {
+      setFacturasPendientes([]);
+      setFacturasSeleccionadas({});
+    }
+  }, [clienteId, tipo]);
+
   if (!mostrar || !mounted) return null;
 
   const esCobranza = tipo === 'RECIBO_COBRANZA';
 
-  // Agregar un renglón de medio de pago
+  const cargarFacturasPendientes = async (idCli) => {
+    const { data, error } = await supabase
+      .from('comprobantes_cc')
+      .select('*')
+      .eq('cliente_id', idCli)
+      .gt('debe', 0)
+      .order('fecha_emision', { ascending: true });
+
+    if (!error && data) {
+      // Filtrar facturas cuyo saldo pendiente sea > 0
+      const pendientes = data.filter(f => (f.saldo_pendiente === null ? f.debe : f.saldo_pendiente) > 0);
+      setFacturasPendientes(pendientes);
+    }
+  };
+
   const agregarMedioPago = (tipoMedio) => {
     const nuevo = {
       id: Date.now(),
-      metodo: tipoMedio, // 'EFECTIVO', 'TRANSFERENCIA', 'CHEQUE_FISICO', 'ECHEQ'
+      metodo: tipoMedio,
       monto: '',
       numero: '',
       banco: '',
@@ -42,17 +71,30 @@ export default function ModalComprobante({ mostrar, onClose, supabase, clientes 
   };
 
   const actualizarMedio = (id, campo, valor) => {
-    // Si es el campo 'numero' y es un cheque, limitamos a 8 caracteres únicamente
     let valorFinal = valor;
-    if (campo === 'numero') {
-      valorFinal = valor.slice(0, 8);
-    }
-
+    if (campo === 'numero') valorFinal = valor.slice(0, 8);
     setMediosPago(mediosPago.map(m => m.id === id ? { ...m, [campo]: valorFinal } : m));
   };
 
   const eliminarMedio = (id) => {
     setMediosPago(mediosPago.filter(m => m.id !== id));
+  };
+
+  const toggleFacturaSeleccionada = (factura) => {
+    const id = factura.id;
+    const saldoPend = factura.saldo_pendiente === null ? factura.debe : factura.saldo_pendiente;
+
+    if (facturasSeleccionadas[id] !== undefined) {
+      const copy = { ...facturasSeleccionadas };
+      delete copy[id];
+      setFacturasSeleccionadas(copy);
+    } else {
+      setFacturasSeleccionadas({ ...facturasSeleccionadas, [id]: saldoPend });
+    }
+  };
+
+  const cambiarMontoCancelacion = (facturaId, monto) => {
+    setFacturasSeleccionadas({ ...facturasSeleccionadas, [facturaId]: monto });
   };
 
   const totalCobranza = mediosPago.reduce((sum, m) => sum + (parseFloat(m.monto) || 0), 0);
@@ -65,7 +107,6 @@ export default function ModalComprobante({ mostrar, onClose, supabase, clientes 
     }
 
     const montoTotalOperacion = esCobranza ? totalCobranza : parseFloat(montoFactura || 0);
-
     if (montoTotalOperacion <= 0) {
       alert('El monto total debe ser mayor a 0.');
       return;
@@ -83,6 +124,7 @@ export default function ModalComprobante({ mostrar, onClose, supabase, clientes 
       obsDetalle = observaciones ? `${observaciones} (${resumenMedios})` : resumenMedios;
     }
 
+    // 1. Guardar el Comprobante en la Cuenta Corriente
     const { data: compData, error: compError } = await supabase
       .from('comprobantes_cc')
       .insert({
@@ -93,6 +135,7 @@ export default function ModalComprobante({ mostrar, onClose, supabase, clientes 
         fecha_vencimiento: fechaVencimiento || null,
         debe: debeValor,
         haber: haberValor,
+        saldo_pendiente: esDebe ? debeValor : 0,
         observaciones: obsDetalle || null
       })
       .select()
@@ -104,7 +147,37 @@ export default function ModalComprobante({ mostrar, onClose, supabase, clientes 
       return;
     }
 
+    const listadoImputaciones = [];
+
+    // 2. Si es Cobranza, procesar las facturas canceladas e imputaciones
     if (esCobranza && compData) {
+      for (const [factId, montoCancela] of Object.entries(facturasSeleccionadas)) {
+        const montoNum = parseFloat(montoCancela) || 0;
+        if (montoNum > 0) {
+          const facturaOrig = facturasPendientes.find(f => f.id === factId);
+          const saldoActual = facturaOrig?.saldo_pendiente === null ? facturaOrig?.debe : facturaOrig?.saldo_pendiente;
+          const nuevoSaldo = Math.max(0, saldoActual - montoNum);
+
+          // Actualizar saldo pendiente de la factura
+          await supabase.from('comprobantes_cc').update({ saldo_pendiente: nuevoSaldo }).eq('id', factId);
+
+          // Registrar en la tabla de imputaciones
+          await supabase.from('imputaciones_recibo').insert({
+            recibo_id: compData.id,
+            factura_id: factId,
+            monto_imputado: montoNum
+          });
+
+          listadoImputaciones.push({
+            tipo: facturaOrig?.tipo,
+            numero: facturaOrig?.numero,
+            fecha_emision: facturaOrig?.fecha_emision,
+            monto_imputado: montoNum
+          });
+        }
+      }
+
+      // 3. Guardar cheques en la cartera
       const chequesAGuardar = mediosPago
         .filter(m => m.metodo === 'CHEQUE_FISICO' || m.metodo === 'ECHEQ')
         .map(c => ({
@@ -123,168 +196,134 @@ export default function ModalComprobante({ mostrar, onClose, supabase, clientes 
         }));
 
       if (chequesAGuardar.length > 0) {
-        const { error: chequeErr } = await supabase.from('cheques').insert(chequesAGuardar);
-        if (chequeErr) {
-          console.error('Error guardando cheques en cartera:', chequeErr);
-          alert('El comprobante se guardó, pero hubo un detalle guardando los cheques en cartera.');
-        }
+        await supabase.from('cheques').insert(chequesAGuardar);
       }
+
+      // Preparar datos para emitir el PDF
+      const clienteObj = clientes.find(c => (c.cliente_id || c.id) == clienteId);
+      setReciboGenerado({
+        cliente: clienteObj,
+        recibo: compData,
+        mediosPago,
+        facturasImputadas: listadoImputaciones
+      });
     }
 
     setGuardando(false);
-    setMontoFactura('');
-    setNumero('');
-    setObservaciones('');
-    setMediosPago([]);
     onGuardado();
-    onClose();
+
+    if (!esCobranza) {
+      onClose();
+    }
   };
 
   const modalUI = (
-    <div
-      style={{
-        position: 'fixed',
-        inset: 0,
-        backgroundColor: 'rgba(0, 0, 0, 0.5)',
-        backdropFilter: 'blur(3px)',
-        zIndex: 999999
-      }}
-      onClick={onClose}
-    >
-      <div
-        style={{
-          position: 'fixed',
-          top: '50%',
-          left: '50%',
-          transform: 'translate(-50%, -50%)',
-          background: '#fcfbf9',
-          border: '1px solid #e5e0d8',
-          borderRadius: '14px',
-          width: '94%',
-          maxWidth: '650px',
-          maxHeight: '90vh',
-          overflowY: 'auto',
-          padding: '1.75rem',
-          color: '#2b2927',
-          boxShadow: '0 12px 30px rgba(0,0,0,0.3)',
-          boxSizing: 'border-box'
-        }}
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem', borderBottom: '2px solid #eeeae1', paddingBottom: '0.85rem' }}>
-          <h3 style={{ margin: 0, color: '#15803d', fontSize: '1.2rem', fontWeight: '800' }}>
-            💵 Cargar Comprobante / Cobranza
-          </h3>
-          <button onClick={onClose} style={{ background: '#eeeae1', border: 'none', borderRadius: '50%', width: '32px', height: '32px', cursor: 'pointer', fontWeight: 'bold' }}>✕</button>
-        </div>
-
-        <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem' }}>
-          <div>
-            <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 'bold', color: '#57534e', marginBottom: '0.2rem' }}>Cliente *</label>
-            <select
-              value={clienteId}
-              onChange={(e) => setClienteId(e.target.value)}
-              required
-              style={{ width: '100%', padding: '0.6rem', borderRadius: '6px', border: '1px solid #dcd5c9', background: '#fff' }}
-            >
-              <option value="">-- Seleccionar Cliente --</option>
-              {clientes.map((c) => (
-                <option key={c.cliente_id || c.id} value={c.cliente_id || c.id}>
-                  {c.razon_social}
-                </option>
-              ))}
-            </select>
+    <>
+      <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0, 0, 0, 0.5)', backdropFilter: 'blur(3px)', zIndex: 999999 }} onClick={onClose}>
+        <div style={{ position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', background: '#fcfbf9', border: '1px solid #e5e0d8', borderRadius: '14px', width: '94%', maxWidth: '700px', maxHeight: '90vh', overflowY: 'auto', padding: '1.75rem', color: '#2b2927', boxShadow: '0 12px 30px rgba(0,0,0,0.3)', boxSizing: 'border-box' }} onClick={(e) => e.stopPropagation()}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem', borderBottom: '2px solid #eeeae1', paddingBottom: '0.85rem' }}>
+            <h3 style={{ margin: 0, color: '#15803d', fontSize: '1.2rem', fontWeight: '800' }}>💵 Cargar Comprobante / Cobranza</h3>
+            <button onClick={onClose} style={{ background: '#eeeae1', border: 'none', borderRadius: '50%', width: '32px', height: '32px', cursor: 'pointer', fontWeight: 'bold' }}>✕</button>
           </div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
+          <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem' }}>
             <div>
-              <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 'bold', color: '#57534e', marginBottom: '0.2rem' }}>Tipo de Movimiento</label>
-              <select
-                value={tipo}
-                onChange={(e) => {
-                  setTipo(e.target.value);
-                  if (e.target.value !== 'RECIBO_COBRANZA') setMediosPago([]);
-                }}
-                style={{ width: '100%', padding: '0.6rem', borderRadius: '6px', border: '1px solid #dcd5c9', background: '#fff' }}
-              >
-                <option value="RECIBO_COBRANZA">Recibo / Cobranza (-Deuda)</option>
-                <option value="FACTURA_A">Factura A (+Deuda)</option>
-                <option value="FACTURA_B">Factura B (+Deuda)</option>
-                <option value="NOTA_DEBITO">Nota de Débito (+Deuda)</option>
-                <option value="NOTA_CREDITO">Nota de Crédito (-Deuda)</option>
+              <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 'bold', color: '#57534e', marginBottom: '0.2rem' }}>Cliente *</label>
+              <select value={clienteId} onChange={(e) => setClienteId(e.target.value)} required style={{ width: '100%', padding: '0.6rem', borderRadius: '6px', border: '1px solid #dcd5c9', background: '#fff' }}>
+                <option value="">-- Seleccionar Cliente --</option>
+                {clientes.map((c) => (
+                  <option key={c.cliente_id || c.id} value={c.cliente_id || c.id}>{c.razon_social}</option>
+                ))}
               </select>
             </div>
 
-            <div>
-              <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 'bold', color: '#57534e', marginBottom: '0.2rem' }}>N° Comprobante</label>
-              <input
-                type="text"
-                placeholder="0001-00001234"
-                value={numero}
-                onChange={(e) => setNumero(e.target.value)}
-                style={{ width: '100%', padding: '0.6rem', borderRadius: '6px', border: '1px solid #dcd5c9', background: '#fff', boxSizing: 'border-box' }}
-              />
-            </div>
-          </div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
+              <div>
+                <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 'bold', color: '#57534e', marginBottom: '0.2rem' }}>Tipo de Movimiento</label>
+                <select value={tipo} onChange={(e) => { setTipo(e.target.value); if (e.target.value !== 'RECIBO_COBRANZA') setMediosPago([]); }} style={{ width: '100%', padding: '0.6rem', borderRadius: '6px', border: '1px solid #dcd5c9', background: '#fff' }}>
+                  <option value="RECIBO_COBRANZA">Recibo / Cobranza (-Deuda)</option>
+                  <option value="FACTURA_A">Factura A (+Deuda)</option>
+                  <option value="FACTURA_B">Factura B (+Deuda)</option>
+                  <option value="NOTA_DEBITO">Nota de Débito (+Deuda)</option>
+                  <option value="NOTA_CREDITO">Nota de Crédito (-Deuda)</option>
+                </select>
+              </div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
-            <div>
-              <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 'bold', color: '#57534e', marginBottom: '0.2rem' }}>Fecha Emisión *</label>
-              <input
-                type="date"
-                value={fechaEmision}
-                onChange={(e) => setFechaEmision(e.target.value)}
-                required
-                style={{ width: '100%', padding: '0.6rem', borderRadius: '6px', border: '1px solid #dcd5c9', background: '#fff', boxSizing: 'border-box' }}
-              />
+              <div>
+                <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 'bold', color: '#57534e', marginBottom: '0.2rem' }}>N° Comprobante</label>
+                <input type="text" placeholder="0001-00001234" value={numero} onChange={(e) => setNumero(e.target.value)} style={{ width: '100%', padding: '0.6rem', borderRadius: '6px', border: '1px solid #dcd5c9', background: '#fff', boxSizing: 'border-box' }} />
+              </div>
             </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
+              <div>
+                <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 'bold', color: '#57534e', marginBottom: '0.2rem' }}>Fecha Emisión *</label>
+                <input type="date" value={fechaEmision} onChange={(e) => setFechaEmision(e.target.value)} required style={{ width: '100%', padding: '0.6rem', borderRadius: '6px', border: '1px solid #dcd5c9', background: '#fff', boxSizing: 'border-box' }} />
+              </div>
+              {!esCobranza && (
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 'bold', color: '#57534e', marginBottom: '0.2rem' }}>Fecha Vencimiento</label>
+                  <input type="date" value={fechaVencimiento} onChange={(e) => setFechaVencimiento(e.target.value)} style={{ width: '100%', padding: '0.6rem', borderRadius: '6px', border: '1px solid #dcd5c9', background: '#fff', boxSizing: 'border-box' }} />
+                </div>
+              )}
+            </div>
+
+            {/* APLICACIÓN / IMPUTACIÓN DE FACTURAS EN COBRANZAS */}
+            {esCobranza && clienteId && facturasPendientes.length > 0 && (
+              <div style={{ backgroundColor: '#fff8f0', border: '1px solid #fed7aa', borderRadius: '8px', padding: '0.85rem' }}>
+                <span style={{ fontSize: '0.8rem', fontWeight: 'bold', color: '#c2410c' }}>📌 Seleccionar Facturas a Cancelar / Imputar:</span>
+                <div style={{ marginTop: '0.5rem', maxHeight: '140px', overflowY: 'auto' }}>
+                  {facturasPendientes.map((f) => {
+                    const saldo = f.saldo_pendiente === null ? f.debe : f.saldo_pendiente;
+                    const estaSeleccionada = facturasSeleccionadas[f.id] !== undefined;
+
+                    return (
+                      <div key={f.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0.35rem 0', borderBottom: '1px solid #ffedd5', fontSize: '0.8rem' }}>
+                        <label style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', cursor: 'pointer' }}>
+                          <input type="checkbox" checked={estaSeleccionada} onChange={() => toggleFacturaSeleccionada(f)} style={{ accentColor: '#15803d' }} />
+                          <span style={{ fontWeight: 'bold' }}>{f.tipo} #{f.numero || 'S/N'}</span>
+                          <span style={{ color: '#78716c' }}>({f.fecha_emision})</span>
+                        </label>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                          <span style={{ color: '#dc2626', fontWeight: 'bold' }}>Saldo: ${parseFloat(saldo).toLocaleString('es-AR')}</span>
+                          {estaSeleccionada && (
+                            <input
+                              type="number"
+                              step="0.01"
+                              value={facturasSeleccionadas[f.id]}
+                              onChange={(e) => cambiarMontoCancelacion(f.id, e.target.value)}
+                              style={{ width: '85px', padding: '0.2rem 0.4rem', borderRadius: '4px', border: '1px solid #dcd5c9', fontWeight: 'bold', fontSize: '0.75rem' }}
+                            />
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
 
             {!esCobranza && (
               <div>
-                <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 'bold', color: '#57534e', marginBottom: '0.2rem' }}>Fecha Vencimiento</label>
-                <input
-                  type="date"
-                  value={fechaVencimiento}
-                  onChange={(e) => setFechaVencimiento(e.target.value)}
-                  style={{ width: '100%', padding: '0.6rem', borderRadius: '6px', border: '1px solid #dcd5c9', background: '#fff', boxSizing: 'border-box' }}
-                />
+                <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 'bold', color: '#57534e', marginBottom: '0.2rem' }}>Importe ($) *</label>
+                <input type="number" step="0.01" placeholder="0.00" value={montoFactura} onChange={(e) => setMontoFactura(e.target.value)} required style={{ width: '100%', padding: '0.6rem', borderRadius: '6px', border: '1px solid #dcd5c9', background: '#fff', fontSize: '1.1rem', fontWeight: 'bold', boxSizing: 'border-box' }} />
               </div>
             )}
-          </div>
 
-          {!esCobranza && (
-            <div>
-              <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 'bold', color: '#57534e', marginBottom: '0.2rem' }}>Importe ($) *</label>
-              <input
-                type="number"
-                step="0.01"
-                placeholder="0.00"
-                value={montoFactura}
-                onChange={(e) => setMontoFactura(e.target.value)}
-                required
-                style={{ width: '100%', padding: '0.6rem', borderRadius: '6px', border: '1px solid #dcd5c9', background: '#fff', fontSize: '1.1rem', fontWeight: 'bold', boxSizing: 'border-box' }}
-              />
-            </div>
-          )}
-
-          {esCobranza && (
-            <div style={{ backgroundColor: '#f5f2eb', border: '1px solid #e5e0d8', borderRadius: '8px', padding: '1rem', marginTop: '0.5rem' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
-                <span style={{ fontSize: '0.85rem', fontWeight: 'bold', color: '#1c1917' }}>💳 Medios de Pago recibidos</span>
-                <div style={{ display: 'flex', gap: '0.35rem' }}>
-                  <button type="button" onClick={() => agregarMedioPago('EFECTIVO')} style={{ padding: '0.3rem 0.6rem', fontSize: '0.75rem', borderRadius: '4px', border: '1px solid #dcd5c9', background: '#fff', cursor: 'pointer', fontWeight: 'bold' }}>+ Efectivo</button>
-                  <button type="button" onClick={() => agregarMedioPago('TRANSFERENCIA')} style={{ padding: '0.3rem 0.6rem', fontSize: '0.75rem', borderRadius: '4px', border: '1px solid #dcd5c9', background: '#fff', cursor: 'pointer', fontWeight: 'bold' }}>+ Transf.</button>
-                  <button type="button" onClick={() => agregarMedioPago('CHEQUE_FISICO')} style={{ padding: '0.3rem 0.6rem', fontSize: '0.75rem', borderRadius: '4px', border: '1px solid #15803d', background: '#eab308', color: '#fff', cursor: 'pointer', fontWeight: 'bold' }}>+ Cheque Físico</button>
-                  <button type="button" onClick={() => agregarMedioPago('ECHEQ')} style={{ padding: '0.3rem 0.6rem', fontSize: '0.75rem', borderRadius: '4px', border: '1px solid #15803d', background: '#15803d', color: '#fff', cursor: 'pointer', fontWeight: 'bold' }}>+ ECHEQ</button>
+            {/* SECCIÓN DE MEDIOS DE PAGO */}
+            {esCobranza && (
+              <div style={{ backgroundColor: '#f5f2eb', border: '1px solid #e5e0d8', borderRadius: '8px', padding: '1rem', marginTop: '0.5rem' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
+                  <span style={{ fontSize: '0.85rem', fontWeight: 'bold', color: '#1c1917' }}>💳 Medios de Pago recibidos</span>
+                  <div style={{ display: 'flex', gap: '0.35rem' }}>
+                    <button type="button" onClick={() => agregarMedioPago('EFECTIVO')} style={{ padding: '0.3rem 0.6rem', fontSize: '0.75rem', borderRadius: '4px', border: '1px solid #dcd5c9', background: '#fff', cursor: 'pointer', fontWeight: 'bold' }}>+ Efectivo</button>
+                    <button type="button" onClick={() => agregarMedioPago('TRANSFERENCIA')} style={{ padding: '0.3rem 0.6rem', fontSize: '0.75rem', borderRadius: '4px', border: '1px solid #dcd5c9', background: '#fff', cursor: 'pointer', fontWeight: 'bold' }}>+ Transf.</button>
+                    <button type="button" onClick={() => agregarMedioPago('CHEQUE_FISICO')} style={{ padding: '0.3rem 0.6rem', fontSize: '0.75rem', borderRadius: '4px', border: '1px solid #15803d', background: '#eab308', color: '#fff', cursor: 'pointer', fontWeight: 'bold' }}>+ Cheque Físico</button>
+                    <button type="button" onClick={() => agregarMedioPago('ECHEQ')} style={{ padding: '0.3rem 0.6rem', fontSize: '0.75rem', borderRadius: '4px', border: '1px solid #15803d', background: '#15803d', color: '#fff', cursor: 'pointer', fontWeight: 'bold' }}>+ ECHEQ</button>
+                  </div>
                 </div>
-              </div>
 
-              {mediosPago.length === 0 ? (
-                <div style={{ fontSize: '0.8rem', color: '#78716c', textAlign: 'center', padding: '1rem', border: '1px dashed #dcd5c9', borderRadius: '6px' }}>
-                  Hacé clic en los botones de arriba para agregar medios de pago (ej: Cheque + Efectivo)
-                </div>
-              ) : (
-                mediosPago.map((m) => {
+                {mediosPago.map((m) => {
                   const esCheque = m.metodo === 'CHEQUE_FISICO' || m.metodo === 'ECHEQ';
 
                   return (
@@ -299,111 +338,57 @@ export default function ModalComprobante({ mostrar, onClose, supabase, clientes 
                       <div style={{ display: 'grid', gridTemplateColumns: esCheque ? '1fr 1fr 1fr' : '1fr', gap: '0.5rem', marginBottom: esCheque ? '0.5rem' : 0 }}>
                         <div>
                           <label style={{ fontSize: '0.7rem', color: '#78716c', fontWeight: 'bold' }}>Monto ($)</label>
-                          <input
-                            type="number"
-                            step="0.01"
-                            placeholder="0.00"
-                            value={m.monto}
-                            onChange={(e) => actualizarMedio(m.id, 'monto', e.target.value)}
-                            style={{ width: '100%', padding: '0.4rem', borderRadius: '4px', border: '1px solid #dcd5c9', fontWeight: 'bold', boxSizing: 'border-box' }}
-                          />
+                          <input type="number" step="0.01" placeholder="0.00" value={m.monto} onChange={(e) => actualizarMedio(m.id, 'monto', e.target.value)} style={{ width: '100%', padding: '0.4rem', borderRadius: '4px', border: '1px solid #dcd5c9', fontWeight: 'bold', boxSizing: 'border-box' }} />
                         </div>
-
                         {esCheque && (
                           <>
                             <div>
                               <label style={{ fontSize: '0.7rem', color: '#78716c', fontWeight: 'bold' }}>N° Cheque (8 dígs.)</label>
-                              <input
-                                type="text"
-                                maxLength={8} // 👈 Limita tipeo a 8 caracteres máximo
-                                placeholder="12345678"
-                                value={m.numero}
-                                onChange={(e) => actualizarMedio(m.id, 'numero', e.target.value)}
-                                style={{ width: '100%', padding: '0.4rem', borderRadius: '4px', border: '1px solid #dcd5c9', boxSizing: 'border-box', fontFamily: 'monospace' }}
-                              />
+                              <input type="text" maxLength={8} placeholder="12345678" value={m.numero} onChange={(e) => actualizarMedio(m.id, 'numero', e.target.value)} style={{ width: '100%', padding: '0.4rem', borderRadius: '4px', border: '1px solid #dcd5c9', boxSizing: 'border-box', fontFamily: 'monospace' }} />
                             </div>
                             <div>
                               <label style={{ fontSize: '0.7rem', color: '#78716c', fontWeight: 'bold' }}>Banco</label>
-                              <input
-                                type="text"
-                                placeholder="Ej: Galicia"
-                                value={m.banco}
-                                onChange={(e) => actualizarMedio(m.id, 'banco', e.target.value)}
-                                style={{ width: '100%', padding: '0.4rem', borderRadius: '4px', border: '1px solid #dcd5c9', boxSizing: 'border-box' }}
-                              />
+                              <input type="text" placeholder="Ej: Galicia" value={m.banco} onChange={(e) => actualizarMedio(m.id, 'banco', e.target.value)} style={{ width: '100%', padding: '0.4rem', borderRadius: '4px', border: '1px solid #dcd5c9', boxSizing: 'border-box' }} />
                             </div>
                           </>
                         )}
                       </div>
-
-                      {esCheque && (
-                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '0.5rem' }}>
-                          <div>
-                            <label style={{ fontSize: '0.7rem', color: '#78716c', fontWeight: 'bold' }}>CUIT Emisor</label>
-                            <input
-                              type="text"
-                              placeholder="30-..."
-                              value={m.cuit_emisor}
-                              onChange={(e) => actualizarMedio(m.id, 'cuit_emisor', e.target.value)}
-                              style={{ width: '100%', padding: '0.4rem', borderRadius: '4px', border: '1px solid #dcd5c9', boxSizing: 'border-box' }}
-                            />
-                          </div>
-                          <div>
-                            <label style={{ fontSize: '0.7rem', color: '#78716c', fontWeight: 'bold' }}>F. Emisión</label>
-                            <input
-                              type="date"
-                              value={m.fecha_emision}
-                              onChange={(e) => actualizarMedio(m.id, 'fecha_emision', e.target.value)}
-                              style={{ width: '100%', padding: '0.4rem', borderRadius: '4px', border: '1px solid #dcd5c9', boxSizing: 'border-box' }}
-                            />
-                          </div>
-                          <div>
-                            <label style={{ fontSize: '0.7rem', color: '#dc2626', fontWeight: 'bold' }}>F. Cobro (Venc.)</label>
-                            <input
-                              type="date"
-                              value={m.fecha_pago}
-                              onChange={(e) => actualizarMedio(m.id, 'fecha_pago', e.target.value)}
-                              style={{ width: '100%', padding: '0.4rem', borderRadius: '4px', border: '1px solid #dcd5c9', boxSizing: 'border-box' }}
-                            />
-                          </div>
-                        </div>
-                      )}
                     </div>
                   );
-                })
-              )}
+                })}
 
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: '1px solid #dcd5c9', paddingTop: '0.5rem', marginTop: '0.5rem' }}>
-                <span style={{ fontSize: '0.85rem', fontWeight: 'bold', color: '#44403c' }}>Total Recibo:</span>
-                <span style={{ fontSize: '1.2rem', fontWeight: '900', color: '#15803d' }}>
-                  $ {totalCobranza.toLocaleString('es-AR', { minimumFractionDigits: 2 })}
-                </span>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: '1px solid #dcd5c9', paddingTop: '0.5rem', marginTop: '0.5rem' }}>
+                  <span style={{ fontSize: '0.85rem', fontWeight: 'bold', color: '#44403c' }}>Total Recibo:</span>
+                  <span style={{ fontSize: '1.2rem', fontWeight: '900', color: '#15803d' }}>$ {totalCobranza.toLocaleString('es-AR', { minimumFractionDigits: 2 })}</span>
+                </div>
               </div>
+            )}
+
+            <div>
+              <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 'bold', color: '#57534e', marginBottom: '0.2rem' }}>Observaciones</label>
+              <textarea rows={2} placeholder="Notas adicionales..." value={observaciones} onChange={(e) => setObservaciones(e.target.value)} style={{ width: '100%', padding: '0.6rem', borderRadius: '6px', border: '1px solid #dcd5c9', background: '#fff', boxSizing: 'border-box' }} />
             </div>
-          )}
 
-          <div>
-            <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 'bold', color: '#57534e', marginBottom: '0.2rem' }}>Observaciones</label>
-            <textarea
-              rows={2}
-              placeholder="Notas adicionales..."
-              value={observaciones}
-              onChange={(e) => setObservaciones(e.target.value)}
-              style={{ width: '100%', padding: '0.6rem', borderRadius: '6px', border: '1px solid #dcd5c9', background: '#fff', boxSizing: 'border-box' }}
-            />
-          </div>
-
-          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.5rem', marginTop: '1rem', borderTop: '1px solid #eeeae1', paddingTop: '1rem' }}>
-            <button type="button" onClick={onClose} style={{ padding: '0.55rem 1.1rem', borderRadius: '6px', border: '1px solid #dcd5c9', background: '#eeeae1', cursor: 'pointer', fontWeight: 'bold' }}>
-              Cancelar
-            </button>
-            <button type="submit" disabled={guardando} style={{ padding: '0.55rem 1.25rem', borderRadius: '6px', border: 'none', background: '#15803d', color: '#fff', fontWeight: 'bold', cursor: 'pointer' }}>
-              {guardando ? '💾 Guardando...' : '💾 Registrar Comprobante'}
-            </button>
-          </div>
-        </form>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.5rem', marginTop: '1rem', borderTop: '1px solid #eeeae1', paddingTop: '1rem' }}>
+              <button type="button" onClick={onClose} style={{ padding: '0.55rem 1.1rem', borderRadius: '6px', border: '1px solid #dcd5c9', background: '#eeeae1', cursor: 'pointer', fontWeight: 'bold' }}>Cancelar</button>
+              <button type="submit" disabled={guardando} style={{ padding: '0.55rem 1.25rem', borderRadius: '6px', border: 'none', background: '#15803d', color: '#fff', fontWeight: 'bold', cursor: 'pointer' }}>
+                {guardando ? '💾 Guardando...' : '💾 Registrar Comprobante'}
+              </button>
+            </div>
+          </form>
+        </div>
       </div>
-    </div>
+
+      {/* PDF RECIBO GENERADO */}
+      <ModalReciboPDF
+        mostrar={Boolean(reciboGenerado)}
+        onClose={() => {
+          setReciboGenerado(null);
+          onClose();
+        }}
+        reciboData={reciboGenerado}
+      />
+    </>
   );
 
   return createPortal(modalUI, document.body);
