@@ -53,8 +53,28 @@ export default function ModalResumenCliente({ mostrar, onClose, cliente, supabas
     }
   };
 
+  // Función para formatear el nombre del comprobante en la vista
+  const formatearTipoComprobante = (tipo) => {
+    switch (tipo) {
+      case 'RECIBO_COBRANZA':
+        return 'RECIBO';
+      case 'FACTURA_A':
+        return 'FACTURA A';
+      case 'FACTURA_B':
+        return 'FACTURA B';
+      case 'FACTURA_C':
+        return 'FACTURA C';
+      case 'NOTA_DEBITO':
+        return 'NOTA DE DÉBITO';
+      case 'NOTA_CREDITO':
+        return 'NOTA DE CRÉDITO';
+      default:
+        return tipo ? tipo.replace('_', ' ') : '';
+    }
+  };
+
   const handleEliminar = async (mov) => {
-    if (!confirm(`¿Estás seguro de eliminar el comprobante ${mov.tipo} ${mov.numero ? `#${mov.numero}` : ''}?`)) {
+    if (!confirm(`¿Estás seguro de eliminar el comprobante ${formatearTipoComprobante(mov.tipo)} ${mov.numero ? `#${mov.numero}` : ''}?`)) {
       return;
     }
 
@@ -200,7 +220,7 @@ export default function ModalResumenCliente({ mostrar, onClose, cliente, supabas
           </div>
         </div>
 
-        {/* TABLA CON ANCHOS FIJOS Y ESPACIO ASEGURADO */}
+        {/* TABLA DE MOVIMIENTOS */}
         <div style={{ overflowX: 'auto', marginBottom: '1.5rem' }}>
           <table style={{ width: '100%', tableLayout: 'fixed', borderCollapse: 'collapse', fontSize: '0.8rem', textAlign: 'left' }}>
             <thead>
@@ -230,6 +250,7 @@ export default function ModalResumenCliente({ mostrar, onClose, cliente, supabas
               ) : (
                 movimientos.map((m) => {
                   const estaEditando = editandoId === m.id;
+                  const nombreComprobante = formatearTipoComprobante(m.tipo);
 
                   if (estaEditando) {
                     return (
@@ -243,7 +264,7 @@ export default function ModalResumenCliente({ mostrar, onClose, cliente, supabas
                           />
                         </td>
                         <td style={{ padding: '0.4rem' }}>
-                          <span style={{ fontWeight: 'bold', fontSize: '0.75rem' }}>{m.tipo}</span>
+                          <span style={{ fontWeight: 'bold', fontSize: '0.75rem' }}>{nombreComprobante}</span>
                           <input
                             type="text"
                             placeholder="N°"
@@ -296,23 +317,20 @@ export default function ModalResumenCliente({ mostrar, onClose, cliente, supabas
                     <tr key={m.id} style={{ borderBottom: '1px solid #eeeae1' }}>
                       <td style={{ padding: '0.6rem 0.4rem', whiteSpace: 'nowrap' }}>{m.fecha_emision}</td>
                       <td style={{ padding: '0.6rem 0.4rem', fontWeight: 'bold', wordBreak: 'break-word' }}>
-                        {m.tipo} {m.numero ? `#${m.numero}` : ''}
+                        {nombreComprobante} {m.numero ? `#${m.numero}` : ''}
                       </td>
                       <td style={{ padding: '0.6rem 0.4rem', color: '#57534e', fontSize: '0.75rem', wordBreak: 'break-word' }}>
                         {m.observaciones || '-'}
                       </td>
                       
-                      {/* MONTO DEBE FIJO EN UNA LÍNEA */}
                       <td style={{ padding: '0.6rem 0.4rem', textAlign: 'right', fontWeight: 'bold', color: m.debe > 0 ? '#2b2927' : '#a8a29e', whiteSpace: 'nowrap' }}>
                         {m.debe > 0 ? `$\u00A0${m.debe.toLocaleString('es-AR', { minimumFractionDigits: 2 })}` : '-'}
                       </td>
 
-                      {/* MONTO HABER FIJO EN UNA LÍNEA */}
                       <td style={{ padding: '0.6rem 0.4rem', textAlign: 'right', fontWeight: 'bold', color: m.haber > 0 ? '#15803d' : '#a8a29e', whiteSpace: 'nowrap' }}>
                         {m.haber > 0 ? `$\u00A0${m.haber.toLocaleString('es-AR', { minimumFractionDigits: 2 })}` : '-'}
                       </td>
 
-                      {/* SALDO ACUMULADO FIJO EN UNA LÍNEA */}
                       <td style={{ padding: '0.6rem 0.4rem', textAlign: 'right', fontWeight: 'bold', color: m.saldoAcumulado > 0 ? '#15803d' : '#78716c', whiteSpace: 'nowrap' }}>
                         $&nbsp;{m.saldoAcumulado.toLocaleString('es-AR', { minimumFractionDigits: 2 })}
                       </td>
