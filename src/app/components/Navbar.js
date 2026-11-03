@@ -4,7 +4,7 @@ export default function Navbar({ activeTab, setActiveTab, onLogout }) {
   const navItems = [
     { id: 'clientes', label: '👥 Clientes' },
     { id: 'cuentas_corrientes', label: '📊 Cuentas Corrientes' },
-    { id: 'cartera_valores', label: '💼 Cartera de Valores' }, // 👈 Nuevo módulo
+    { id: 'cartera_valores', label: '💳 Cartera de Valores' },
     { id: 'stock', label: '📦 Stock' },
     { id: 'pedidos', label: '🛒 Pedidos de Venta' },
   ];
@@ -55,21 +55,24 @@ export default function Navbar({ activeTab, setActiveTab, onLogout }) {
           })}
         </nav>
 
-        {/* BOTÓN SALIR */}
+        {/* BOTÓN SALIR RESPETA PALETA OSCURA/GRIS */}
         <button
           onClick={onLogout}
           style={{
-            backgroundColor: '#44403c',
-            color: '#f5f5f4',
-            border: 'none',
+            backgroundColor: '#292524',
+            color: '#e7e5e4',
+            border: '1px solid #44403c',
             padding: '0.45rem 0.85rem',
             borderRadius: '6px',
             fontSize: '0.8rem',
             fontWeight: 'bold',
-            cursor: 'pointer'
+            cursor: 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '0.35rem'
           }}
         >
-          🚪 Salir
+          <span>Cerrar Sesión</span> ➔
         </button>
 
       </div>
