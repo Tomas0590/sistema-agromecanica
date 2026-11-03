@@ -9,6 +9,7 @@ import dynamicComponent from 'next/dynamic';
 const Navbar = dynamicComponent(() => import('./components/Navbar'), { ssr: false });
 const ClientesContainer = dynamicComponent(() => import('./components/ClientesContainer'), { ssr: false });
 const CuentasCorrientesContainer = dynamicComponent(() => import('./components/CuentasCorrientesContainer'), { ssr: false });
+const CarteraChequesContainer = dynamicComponent(() => import('./components/CarteraChequesContainer'), { ssr: false });
 const StockContainer = dynamicComponent(() => import('./components/StockContainer'), { ssr: false });
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
@@ -177,6 +178,10 @@ export default function Home() {
 
         {activeTab === 'cuentas_corrientes' && (
           <CuentasCorrientesContainer supabase={supabase} />
+        )}
+
+        {activeTab === 'cartera_valores' && (
+          <CarteraChequesContainer supabase={supabase} />
         )}
 
         {activeTab === 'stock' && (
