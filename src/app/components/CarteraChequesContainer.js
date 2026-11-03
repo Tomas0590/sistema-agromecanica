@@ -35,9 +35,13 @@ export default function CarteraChequesContainer({ supabase }) {
 
   const cambiarEstadoCheque = async (id, nuevoEstado) => {
     let destinoPrompt = null;
-    if (nuevoEstado === 'ENDOSADO') {
-      destinoPrompt = prompt('Ingrese el destino del endoso (Ej: Proveedor Agrometal S.A.):');
-      if (!destinoPrompt) return;
+    
+    if (nuevoEstado === 'DEPOSITADO') {
+      destinoPrompt = prompt('¿En qué banco/cuenta se depositó el cheque? (Ej: Banco Galicia Cta Cte):');
+      if (destinoPrompt === null) return;
+    } else if (nuevoEstado === 'ENDOSADO') {
+      destinoPrompt = prompt('¿A quién se endosó/entregó el cheque? (Ej: Proveedor Agrometal S.A.):');
+      if (destinoPrompt === null) return;
     }
 
     const { error } = await supabase
@@ -55,6 +59,20 @@ export default function CarteraChequesContainer({ supabase }) {
     }
   };
 
+  // Cálculo de alertas de vencimiento
+  const getSemaforoVencimiento = (fechaPagoStr) => {
+    const hoy = new Date();
+    hoy.setHours(0,0,0,0);
+    const fechaPago = new Date(fechaPagoStr + 'T00:00:00');
+    const diffDays = Math.ceil((fechaPago - hoy) / (1000 * 60 * 60 * 24));
+
+    if (diffDays < 0) return { text: `🚨 VENCIDO (hace ${Math.abs(diffDays)} días)`, color: '#dc2626', bg: '#fef2f2', urgente: true };
+    if (diffDays === 0) return { text: `⚠️ VENCE HOY`, color: '#dc2626', bg: '#fef2f2', urgente: true };
+    if (diffDays <= 5) return { text: `⚠️ Vence en ${diffDays} días`, color: '#d97706', bg: '#fffbeb', urgente: true };
+    if (diffDays <= 15) return { text: `🟡 Vence en ${diffDays} días`, color: '#b45309', bg: '#fffbeb', urgente: false };
+    return { text: `🟢 Vence en ${diffDays} días`, color: '#15803d', bg: '#f0fdf4', urgente: false };
+  };
+
   const chequesFiltrados = cheques.filter((c) => {
     const matchEstado = filtroEstado === 'TODOS' ? true : c.estado === filtroEstado;
     const matchTexto = 
@@ -64,22 +82,8 @@ export default function CarteraChequesContainer({ supabase }) {
     return matchEstado && matchTexto;
   });
 
-  // Cálculo de totales en cartera
-  const totalEnCartera = cheques
-    .filter(c => c.estado === 'EN_CARTERA')
-    .reduce((acc, c) => acc + parseFloat(c.monto || 0), 0);
-
-  // Calcular días para vencimiento
-  const getSemaforoVencimiento = (fechaPagoStr) => {
-    const hoy = new Date();
-    hoy.setHours(0,0,0,0);
-    const fechaPago = new Date(fechaPagoStr);
-    const diffDays = Math.ceil((fechaPago - hoy) / (1000 * 60 * 60 * 24));
-
-    if (diffDays <= 2) return { text: `⚠️ Vence en ${diffDays} días`, color: '#dc2626', bg: '#fef2f2' };
-    if (diffDays <= 15) return { text: `🟡 Vence en ${diffDays} días`, color: '#d97706', bg: '#fffbeb' };
-    return { text: `🟢 Vence en ${diffDays} días`, color: '#15803d', bg: '#f0fdf4' };
-  };
+  const chequesUrgentes = cheques.filter(c => c.estado === 'EN_CARTERA' && getSemaforoVencimiento(c.fecha_pago).urgente);
+  const totalEnCartera = cheques.filter(c => c.estado === 'EN_CARTERA').reduce((acc, c) => acc + parseFloat(c.monto || 0), 0);
 
   return (
     <div>
@@ -87,10 +91,10 @@ export default function CarteraChequesContainer({ supabase }) {
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem', flexWrap: 'wrap', gap: '0.75rem' }}>
         <div>
           <h2 style={{ color: '#2b2927', margin: 0, fontSize: '1.35rem', fontWeight: '800' }}>
-            Cartera de Cheques y ECHEQs
+            💼 Cartera de Cheques y ECHEQs
           </h2>
           <span style={{ fontSize: '0.85rem', color: '#78716c' }}>
-            Seguimiento de valores en mano, depósitos y endosos a proveedores
+            Control de valores en mano, depósitos bancarios y seguimiento anti-vencimientos de Agromecanica
           </span>
         </div>
       </div>
@@ -104,15 +108,58 @@ export default function CarteraChequesContainer({ supabase }) {
           </div>
         </div>
 
+        <div style={{ backgroundColor: chequesUrgentes.length > 0 ? '#fef2f2' : '#fcfbf9', border: chequesUrgentes.length > 0 ? '1px solid #fecaca' : '1px solid #e5e0d8', borderRadius: '10px', padding: '1rem 1.25rem' }}>
+          <span style={{ fontSize: '0.8rem', color: chequesUrgentes.length > 0 ? '#dc2626' : '#78716c', fontWeight: 'bold', textTransform: 'uppercase' }}>Por Vencer / Vencidos</span>
+          <div style={{ fontSize: '1.5rem', fontWeight: '900', color: chequesUrgentes.length > 0 ? '#dc2626' : '#2b2927', marginTop: '0.25rem' }}>
+            {chequesUrgentes.length} {chequesUrgentes.length > 0 ? '⚠️' : '✅'}
+          </div>
+        </div>
+
         <div style={{ backgroundColor: '#fcfbf9', border: '1px solid #e5e0d8', borderRadius: '10px', padding: '1rem 1.25rem' }}>
-          <span style={{ fontSize: '0.8rem', color: '#78716c', fontWeight: 'bold', textTransform: 'uppercase' }}>Cheques Activos</span>
+          <span style={{ fontSize: '0.8rem', color: '#78716c', fontWeight: 'bold', textTransform: 'uppercase' }}>Cantidad de Valores en Mano</span>
           <div style={{ fontSize: '1.5rem', fontWeight: '900', color: '#2b2927', marginTop: '0.25rem' }}>
             {cheques.filter(c => c.estado === 'EN_CARTERA').length}
           </div>
         </div>
       </div>
 
-      {/* TABLA DE VALORES */}
+      {/* SECCIÓN ALERTAS URGENTES SI EXISTEN */}
+      {chequesUrgentes.length > 0 && (
+        <div style={{ backgroundColor: '#fff5f5', border: '1px solid #fecaca', borderRadius: '10px', padding: '1.25rem', marginBottom: '1.5rem' }}>
+          <h3 style={{ margin: '0 0 0.75rem 0', color: '#dc2626', fontSize: '1rem', fontWeight: '800', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            🚨 Atenciones requeridas: Validez de cobro próxima a vencer
+          </h3>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '0.75rem' }}>
+            {chequesUrgentes.map((c) => {
+              const semaforo = getSemaforoVencimiento(c.fecha_pago);
+              return (
+                <div key={c.id} style={{ background: '#fff', border: '1px solid #fca5a5', borderRadius: '8px', padding: '0.85rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <div>
+                    <div style={{ fontWeight: 'bold', fontSize: '0.85rem', color: '#1c1917' }}>
+                      {c.tipo === 'ECHEQ' ? '💻 ECHEQ' : '📜 FISICO'} #{c.numero} - {c.banco}
+                    </div>
+                    <div style={{ fontSize: '0.75rem', color: '#57534e' }}>👤 {c.clientes?.razon_social || 'Cliente'}</div>
+                    <div style={{ fontSize: '0.75rem', color: semaforo.color, fontWeight: 'bold', marginTop: '4px' }}>{semaforo.text}</div>
+                  </div>
+                  <div style={{ textAlign: 'right' }}>
+                    <div style={{ fontWeight: '900', fontSize: '1rem', color: '#15803d', marginBottom: '0.35rem' }}>
+                      $ {parseFloat(c.monto).toLocaleString('es-AR', { minimumFractionDigits: 2 })}
+                    </div>
+                    <button
+                      onClick={() => cambiarEstadoCheque(c.id, 'DEPOSITADO')}
+                      style={{ background: '#15803d', color: '#fff', border: 'none', padding: '0.3rem 0.6rem', borderRadius: '4px', fontSize: '0.75rem', fontWeight: 'bold', cursor: 'pointer' }}
+                    >
+                      🏦 Depositar Ya
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* CONTENEDOR TABLA DE VALORES */}
       <div style={{ backgroundColor: '#fcfbf9', borderRadius: '10px', border: '1px solid #e5e0d8', padding: '1.25rem' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem', flexWrap: 'wrap', gap: '0.75rem' }}>
           <input
@@ -151,10 +198,10 @@ export default function CarteraChequesContainer({ supabase }) {
               <tr style={{ backgroundColor: '#eeeae1', color: '#44403c', borderBottom: '2px solid #dcd5c9' }}>
                 <th style={{ padding: '0.75rem' }}>Tipo / N°</th>
                 <th style={{ padding: '0.75rem' }}>Banco</th>
-                <th style={{ padding: '0.75rem' }}>Cliente (Librador)</th>
-                <th style={{ padding: '0.75rem' }}>F. Cobro (Venc.)</th>
+                <th style={{ padding: '0.75rem' }}>Cliente (Emisor)</th>
+                <th style={{ padding: '0.75rem' }}>F. Cobro / Venc.</th>
                 <th style={{ padding: '0.75rem', textAlign: 'right' }}>Monto</th>
-                <th style={{ padding: '0.75rem', textAlign: 'center' }}>Estado</th>
+                <th style={{ padding: '0.75rem', textAlign: 'center' }}>Estado / Destino</th>
                 <th style={{ padding: '0.75rem', textAlign: 'right' }}>Acciones</th>
               </tr>
             </thead>
@@ -162,13 +209,13 @@ export default function CarteraChequesContainer({ supabase }) {
               {cargando ? (
                 <tr>
                   <td colSpan={7} style={{ padding: '2rem', textAlign: 'center', color: '#78716c' }}>
-                    ⏳ Cargando cartera de cheques...
+                    ⏳ Cargando cartera de valores...
                   </td>
                 </tr>
               ) : chequesFiltrados.length === 0 ? (
                 <tr>
                   <td colSpan={7} style={{ padding: '2rem', textAlign: 'center', color: '#78716c' }}>
-                    No se encontraron cheques con el filtro seleccionado.
+                    No se encontraron valores con el filtro seleccionado.
                   </td>
                 </tr>
               ) : (
@@ -181,7 +228,7 @@ export default function CarteraChequesContainer({ supabase }) {
                         {c.tipo === 'ECHEQ' ? '💻 ECHEQ' : '📜 FISICO'} #{c.numero}
                       </td>
                       <td style={{ padding: '0.75rem' }}>{c.banco}</td>
-                      <td style={{ padding: '0.75rem', color: '#1c1917' }}>
+                      <td style={{ padding: '0.75rem', color: '#1c1917', fontWeight: 'bold' }}>
                         👤 {c.clientes?.razon_social || 'Desconocido'}
                       </td>
                       <td style={{ padding: '0.75rem' }}>
@@ -189,27 +236,27 @@ export default function CarteraChequesContainer({ supabase }) {
                           {c.fecha_pago} ({semaforo.text})
                         </span>
                       </td>
-                      <td style={{ padding: '0.75rem', textAlign: 'right', fontWeight: 'bold', color: '#15803d' }}>
+                      <td style={{ padding: '0.75rem', textAlign: 'right', fontWeight: 'bold', color: '#15803d', whiteSpace: 'nowrap' }}>
                         $ {parseFloat(c.monto).toLocaleString('es-AR', { minimumFractionDigits: 2 })}
                       </td>
                       <td style={{ padding: '0.75rem', textAlign: 'center' }}>
-                        <span style={{ fontSize: '0.75rem', fontWeight: 'bold', padding: '0.25rem 0.55rem', borderRadius: '12px', background: c.estado === 'EN_CARTERA' ? '#fef08a' : '#e5e7eb', color: '#1c1917' }}>
+                        <span style={{ fontSize: '0.75rem', fontWeight: 'bold', padding: '0.25rem 0.55rem', borderRadius: '12px', background: c.estado === 'EN_CARTERA' ? '#fef08a' : c.estado === 'DEPOSITADO' ? '#dcfce7' : '#e0f2fe', color: '#1c1917' }}>
                           {c.estado}
                         </span>
-                        {c.destino && <div style={{ fontSize: '0.7rem', color: '#78716c', marginTop: '2px' }}>➡️ {c.destino}</div>}
+                        {c.destino && <div style={{ fontSize: '0.7rem', color: '#57534e', marginTop: '2px', fontWeight: 'bold' }}>📍 {c.destino}</div>}
                       </td>
                       <td style={{ padding: '0.75rem', textAlign: 'right' }}>
                         {c.estado === 'EN_CARTERA' && (
-                          <div style={{ display: 'flex', gap: '0.25rem', justifyContent: 'flex-end' }}>
+                          <div style={{ display: 'flex', gap: '0.3rem', justifyContent: 'flex-end' }}>
                             <button
                               onClick={() => cambiarEstadoCheque(c.id, 'DEPOSITADO')}
-                              style={{ padding: '0.25rem 0.45rem', fontSize: '0.75rem', borderRadius: '4px', border: '1px solid #dcd5c9', background: '#fff', cursor: 'pointer', fontWeight: 'bold' }}
+                              style={{ padding: '0.3rem 0.55rem', fontSize: '0.75rem', borderRadius: '4px', border: '1px solid #15803d', background: '#15803d', color: '#fff', cursor: 'pointer', fontWeight: 'bold' }}
                             >
                               🏦 Depositar
                             </button>
                             <button
                               onClick={() => cambiarEstadoCheque(c.id, 'ENDOSADO')}
-                              style={{ padding: '0.25rem 0.45rem', fontSize: '0.75rem', borderRadius: '4px', border: '1px solid #dcd5c9', background: '#fff', cursor: 'pointer', fontWeight: 'bold' }}
+                              style={{ padding: '0.3rem 0.55rem', fontSize: '0.75rem', borderRadius: '4px', border: '1px solid #0284c7', background: '#0284c7', color: '#fff', cursor: 'pointer', fontWeight: 'bold' }}
                             >
                               ↗️ Endosar
                             </button>
