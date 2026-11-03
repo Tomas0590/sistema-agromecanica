@@ -53,9 +53,8 @@ export default function ModalResumenCliente({ mostrar, onClose, cliente, supabas
     }
   };
 
-  // ELIMINAR COMPROBANTE
   const handleEliminar = async (mov) => {
-    if (!confirm(`¿Estás seguro de eliminar el comprobante ${mov.tipo} ${mov.numero ? `#${mov.numero}` : ''}? esta acción actualizará el saldo del cliente.`)) {
+    if (!confirm(`¿Estás seguro de eliminar el comprobante ${mov.tipo} ${mov.numero ? `#${mov.numero}` : ''}?`)) {
       return;
     }
 
@@ -72,7 +71,6 @@ export default function ModalResumenCliente({ mostrar, onClose, cliente, supabas
     }
   };
 
-  // INICIAR EDICIÓN
   const handleIniciarEdicion = (mov) => {
     setEditandoId(mov.id);
     const esDebe = mov.debe > 0;
@@ -84,7 +82,6 @@ export default function ModalResumenCliente({ mostrar, onClose, cliente, supabas
     });
   };
 
-  // GUARDAR EDICIÓN
   const handleGuardarEdicion = async (mov) => {
     setGuardandoEdicion(true);
     const esDebe = mov.debe > 0;
@@ -141,8 +138,8 @@ export default function ModalResumenCliente({ mostrar, onClose, cliente, supabas
           background: '#ffffff',
           border: '1px solid #e5e0d8',
           borderRadius: '14px',
-          width: '92%',
-          maxWidth: '900px',
+          width: '94%',
+          maxWidth: '920px',
           maxHeight: '90vh',
           overflowY: 'auto',
           padding: '2rem',
@@ -172,11 +169,11 @@ export default function ModalResumenCliente({ mostrar, onClose, cliente, supabas
         `}</style>
 
         {/* CABECERA MEMBRETADA */}
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', borderBottom: '2px solid #15803d', paddingBottom: '1rem', marginBottom: '1.25rem' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', borderBottom: '2px solid #15803d', paddingBottom: '0.85rem', marginBottom: '1.25rem' }}>
           <div>
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.25rem' }}>
-              <img src="/logo.png" alt="Logo" style={{ height: '38px', objectFit: 'contain' }} onError={(e) => e.target.style.display = 'none'} />
-              <h2 style={{ margin: 0, color: '#1c1917', fontSize: '1.4rem', fontWeight: '900' }}>AGROMECANICA</h2>
+              <img src="/logo.png" alt="Logo" style={{ height: '36px', objectFit: 'contain' }} onError={(e) => e.target.style.display = 'none'} />
+              <h2 style={{ margin: 0, color: '#1c1917', fontSize: '1.3rem', fontWeight: '900' }}>AGROMECANICA</h2>
             </div>
             <span style={{ fontSize: '0.8rem', color: '#78716c' }}>Venta de Maquinaria y Repuestos Agrícolas</span>
           </div>
@@ -197,24 +194,24 @@ export default function ModalResumenCliente({ mostrar, onClose, cliente, supabas
 
           <div style={{ textAlign: 'right' }}>
             <span style={{ fontSize: '0.75rem', color: '#78716c', fontWeight: 'bold', textTransform: 'uppercase' }}>Saldo Adeudado</span>
-            <div style={{ fontSize: '1.25rem', fontWeight: '900', color: saldoFinal > 0 ? '#15803d' : '#78716c' }}>
-              $ {saldoFinal.toLocaleString('es-AR', { minimumFractionDigits: 2 })}
+            <div style={{ fontSize: '1.25rem', fontWeight: '900', color: saldoFinal > 0 ? '#15803d' : '#78716c', whiteSpace: 'nowrap' }}>
+              $&nbsp;{saldoFinal.toLocaleString('es-AR', { minimumFractionDigits: 2 })}
             </div>
           </div>
         </div>
 
-        {/* TABLA DE MOVIMIENTOS */}
+        {/* TABLA CON ANCHOS FIJOS Y ESPACIO ASEGURADO */}
         <div style={{ overflowX: 'auto', marginBottom: '1.5rem' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem', textAlign: 'left' }}>
+          <table style={{ width: '100%', tableLayout: 'fixed', borderCollapse: 'collapse', fontSize: '0.8rem', textAlign: 'left' }}>
             <thead>
               <tr style={{ backgroundColor: '#eeeae1', color: '#44403c', borderBottom: '2px solid #dcd5c9' }}>
-                <th style={{ padding: '0.6rem 0.75rem' }}>Fecha</th>
-                <th style={{ padding: '0.6rem 0.75rem' }}>Comprobante</th>
-                <th style={{ padding: '0.6rem 0.75rem' }}>Detalle / Obs.</th>
-                <th style={{ padding: '0.6rem 0.75rem', textAlign: 'right' }}>Debe (+)</th>
-                <th style={{ padding: '0.6rem 0.75rem', textAlign: 'right' }}>Haber (-)</th>
-                <th style={{ padding: '0.6rem 0.75rem', textAlign: 'right' }}>Saldo</th>
-                <th className="no-imprimir" style={{ padding: '0.6rem 0.75rem', textAlign: 'center' }}>Acciones</th>
+                <th style={{ width: '12%', padding: '0.6rem 0.4rem', whiteSpace: 'nowrap' }}>Fecha</th>
+                <th style={{ width: '22%', padding: '0.6rem 0.4rem' }}>Comprobante</th>
+                <th style={{ width: '22%', padding: '0.6rem 0.4rem' }}>Detalle / Obs.</th>
+                <th style={{ width: '14%', padding: '0.6rem 0.4rem', textAlign: 'right', whiteSpace: 'nowrap' }}>Debe (+)</th>
+                <th style={{ width: '14%', padding: '0.6rem 0.4rem', textAlign: 'right', whiteSpace: 'nowrap' }}>Haber (-)</th>
+                <th style={{ width: '14%', padding: '0.6rem 0.4rem', textAlign: 'right', whiteSpace: 'nowrap' }}>Saldo</th>
+                <th className="no-imprimir" style={{ width: '8%', padding: '0.6rem 0.4rem', textAlign: 'center' }}>Acciones</th>
               </tr>
             </thead>
             <tbody>
@@ -237,44 +234,44 @@ export default function ModalResumenCliente({ mostrar, onClose, cliente, supabas
                   if (estaEditando) {
                     return (
                       <tr key={m.id} style={{ backgroundColor: '#fefce8', borderBottom: '1px solid #fef08a' }}>
-                        <td style={{ padding: '0.5rem' }}>
+                        <td style={{ padding: '0.4rem' }}>
                           <input
                             type="date"
                             value={editForm.fecha_emision}
                             onChange={(e) => setEditForm({ ...editForm, fecha_emision: e.target.value })}
-                            style={{ padding: '0.3rem', borderRadius: '4px', border: '1px solid #dcd5c9', fontSize: '0.8rem' }}
+                            style={{ padding: '0.3rem', borderRadius: '4px', border: '1px solid #dcd5c9', fontSize: '0.75rem', width: '100%' }}
                           />
                         </td>
-                        <td style={{ padding: '0.5rem' }}>
-                          <span style={{ fontWeight: 'bold' }}>{m.tipo}</span>
+                        <td style={{ padding: '0.4rem' }}>
+                          <span style={{ fontWeight: 'bold', fontSize: '0.75rem' }}>{m.tipo}</span>
                           <input
                             type="text"
-                            placeholder="N° Comprobante"
+                            placeholder="N°"
                             value={editForm.numero}
                             onChange={(e) => setEditForm({ ...editForm, numero: e.target.value })}
-                            style={{ padding: '0.3rem', borderRadius: '4px', border: '1px solid #dcd5c9', fontSize: '0.8rem', width: '90px', marginLeft: '4px' }}
+                            style={{ padding: '0.3rem', borderRadius: '4px', border: '1px solid #dcd5c9', fontSize: '0.75rem', width: '70px', marginLeft: '4px' }}
                           />
                         </td>
-                        <td style={{ padding: '0.5rem' }}>
+                        <td style={{ padding: '0.4rem' }}>
                           <input
                             type="text"
                             placeholder="Observaciones"
                             value={editForm.observaciones}
                             onChange={(e) => setEditForm({ ...editForm, observaciones: e.target.value })}
-                            style={{ padding: '0.3rem', borderRadius: '4px', border: '1px solid #dcd5c9', fontSize: '0.8rem', width: '100%' }}
+                            style={{ padding: '0.3rem', borderRadius: '4px', border: '1px solid #dcd5c9', fontSize: '0.75rem', width: '100%' }}
                           />
                         </td>
-                        <td colSpan={2} style={{ padding: '0.5rem', textAlign: 'right' }}>
+                        <td colSpan={2} style={{ padding: '0.4rem', textAlign: 'right' }}>
                           <input
                             type="number"
                             step="0.01"
                             value={editForm.monto}
                             onChange={(e) => setEditForm({ ...editForm, monto: e.target.value })}
-                            style={{ padding: '0.3rem', borderRadius: '4px', border: '1px solid #dcd5c9', fontSize: '0.8rem', width: '100px', fontWeight: 'bold' }}
+                            style={{ padding: '0.3rem', borderRadius: '4px', border: '1px solid #dcd5c9', fontSize: '0.75rem', width: '85px', fontWeight: 'bold' }}
                           />
                         </td>
-                        <td style={{ padding: '0.5rem', textAlign: 'right', color: '#a8a29e' }}>-</td>
-                        <td className="no-imprimir" style={{ padding: '0.5rem', textAlign: 'center' }}>
+                        <td style={{ padding: '0.4rem', textAlign: 'right', color: '#a8a29e' }}>-</td>
+                        <td className="no-imprimir" style={{ padding: '0.4rem', textAlign: 'center' }}>
                           <div style={{ display: 'flex', gap: '0.25rem', justifyContent: 'center' }}>
                             <button
                               onClick={() => handleGuardarEdicion(m)}
@@ -297,33 +294,42 @@ export default function ModalResumenCliente({ mostrar, onClose, cliente, supabas
 
                   return (
                     <tr key={m.id} style={{ borderBottom: '1px solid #eeeae1' }}>
-                      <td style={{ padding: '0.6rem 0.75rem', whiteSpace: 'nowrap' }}>{m.fecha_emision}</td>
-                      <td style={{ padding: '0.6rem 0.75rem', fontWeight: 'bold' }}>
+                      <td style={{ padding: '0.6rem 0.4rem', whiteSpace: 'nowrap' }}>{m.fecha_emision}</td>
+                      <td style={{ padding: '0.6rem 0.4rem', fontWeight: 'bold', wordBreak: 'break-word' }}>
                         {m.tipo} {m.numero ? `#${m.numero}` : ''}
                       </td>
-                      <td style={{ padding: '0.6rem 0.75rem', color: '#57534e' }}>{m.observaciones || '-'}</td>
-                      <td style={{ padding: '0.6rem 0.75rem', textAlign: 'right', fontWeight: 'bold', color: m.debe > 0 ? '#2b2927' : '#a8a29e' }}>
-                        {m.debe > 0 ? `$ ${m.debe.toLocaleString('es-AR', { minimumFractionDigits: 2 })}` : '-'}
+                      <td style={{ padding: '0.6rem 0.4rem', color: '#57534e', fontSize: '0.75rem', wordBreak: 'break-word' }}>
+                        {m.observaciones || '-'}
                       </td>
-                      <td style={{ padding: '0.6rem 0.75rem', textAlign: 'right', fontWeight: 'bold', color: m.haber > 0 ? '#15803d' : '#a8a29e' }}>
-                        {m.haber > 0 ? `$ ${m.haber.toLocaleString('es-AR', { minimumFractionDigits: 2 })}` : '-'}
+                      
+                      {/* MONTO DEBE FIJO EN UNA LÍNEA */}
+                      <td style={{ padding: '0.6rem 0.4rem', textAlign: 'right', fontWeight: 'bold', color: m.debe > 0 ? '#2b2927' : '#a8a29e', whiteSpace: 'nowrap' }}>
+                        {m.debe > 0 ? `$\u00A0${m.debe.toLocaleString('es-AR', { minimumFractionDigits: 2 })}` : '-'}
                       </td>
-                      <td style={{ padding: '0.6rem 0.75rem', textAlign: 'right', fontWeight: 'bold', color: m.saldoAcumulado > 0 ? '#15803d' : '#78716c' }}>
-                        $ {m.saldoAcumulado.toLocaleString('es-AR', { minimumFractionDigits: 2 })}
+
+                      {/* MONTO HABER FIJO EN UNA LÍNEA */}
+                      <td style={{ padding: '0.6rem 0.4rem', textAlign: 'right', fontWeight: 'bold', color: m.haber > 0 ? '#15803d' : '#a8a29e', whiteSpace: 'nowrap' }}>
+                        {m.haber > 0 ? `$\u00A0${m.haber.toLocaleString('es-AR', { minimumFractionDigits: 2 })}` : '-'}
                       </td>
-                      <td className="no-imprimir" style={{ padding: '0.6rem 0.75rem', textAlign: 'center' }}>
-                        <div style={{ display: 'flex', gap: '0.35rem', justifyContent: 'center' }}>
+
+                      {/* SALDO ACUMULADO FIJO EN UNA LÍNEA */}
+                      <td style={{ padding: '0.6rem 0.4rem', textAlign: 'right', fontWeight: 'bold', color: m.saldoAcumulado > 0 ? '#15803d' : '#78716c', whiteSpace: 'nowrap' }}>
+                        $&nbsp;{m.saldoAcumulado.toLocaleString('es-AR', { minimumFractionDigits: 2 })}
+                      </td>
+
+                      <td className="no-imprimir" style={{ padding: '0.6rem 0.4rem', textAlign: 'center' }}>
+                        <div style={{ display: 'flex', gap: '0.25rem', justifyContent: 'center' }}>
                           <button
                             onClick={() => handleIniciarEdicion(m)}
                             title="Editar comprobante"
-                            style={{ border: 'none', background: '#f5f2eb', cursor: 'pointer', padding: '0.25rem 0.45rem', borderRadius: '4px', fontSize: '0.8rem' }}
+                            style={{ border: 'none', background: '#f5f2eb', cursor: 'pointer', padding: '0.25rem 0.4rem', borderRadius: '4px', fontSize: '0.75rem' }}
                           >
                             ✏️
                           </button>
                           <button
                             onClick={() => handleEliminar(m)}
                             title="Eliminar comprobante"
-                            style={{ border: 'none', background: '#fef2f2', cursor: 'pointer', padding: '0.25rem 0.45rem', borderRadius: '4px', fontSize: '0.8rem', color: '#dc2626' }}
+                            style={{ border: 'none', background: '#fef2f2', cursor: 'pointer', padding: '0.25rem 0.4rem', borderRadius: '4px', fontSize: '0.75rem', color: '#dc2626' }}
                           >
                             🗑️
                           </button>
