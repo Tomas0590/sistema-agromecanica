@@ -148,7 +148,7 @@ export default function CuentasCorrientesContainer({ supabase }) {
                   const vencido = parseFloat(cliente.saldo_vencido || 0);
 
                   return (
-                    <tr key={cliente.cliente_id} style={{ borderBottom: '1px solid #eeeae1' }}>
+                    <tr key={cliente.cliente_id || cliente.id} style={{ borderBottom: '1px solid #eeeae1' }}>
                       <td style={{ padding: '0.85rem 1rem', fontWeight: 'bold', color: '#1c1917' }}>
                         👤 {cliente.razon_social || 'SIN NOMBRE'}
                       </td>
