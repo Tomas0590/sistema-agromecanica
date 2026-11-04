@@ -21,7 +21,7 @@ export default function ModalComprobante({ mostrar, onClose, supabase, clientes 
   const [facturasPendientes, setFacturasPendientes] = useState([]);
   const [facturasSeleccionadas, setFacturasSeleccionadas] = useState({});
 
-  // ESTADO LECTURA BCRA AUTOMÁTICA { [cuit]: { cargando, situacion, texto, color, bg } }
+  // ESTADO LECTURA BCRA AUTOMÁTICA
   const [bcraStatusMap, setBcraStatusMap] = useState({});
 
   // ESTADO PARA PDF GENERADO
@@ -112,48 +112,101 @@ export default function ModalComprobante({ mostrar, onClose, supabase, clientes 
     setMediosPago([...mediosPago, nuevo]);
   };
 
-  // CONSULTA AUTOMÁTICA AL COMPLETAR 11 DÍGITOS DEL CUIT
+  // CONSULTA BCRA OFICIAL EN TIEMPO REAL (DEUDAS + CHEQUES RECHAZADOS)
   const consultarBcraAutomatico = async (cuitLimpio) => {
-    if (bcraStatusMap[cuitLimpio]) return; // Si ya se consultó, no repetir
+    if (bcraStatusMap[cuitLimpio]?.cargando) return;
 
     setBcraStatusMap(prev => ({ ...prev, [cuitLimpio]: { cargando: true } }));
 
     try {
-      // Consulta a la API del BCRA
-      const res = await fetch(`https://api.bcra.gob.ar/centraldedeudores/v1.0/Deudores/Historico/${cuitLimpio}`);
-      if (!res.ok) throw new Error('Sin datos BCRA');
+      // 1. Consultar Deudas Activas por CUIT
+      const resDeudas = await fetch(`https://api.bcra.gob.ar/centraldedeudores/v1.0/Deudas/${cuitLimpio}`);
       
-      const json = await res.json();
-      const periodos = json.results?.periodos || json.results?.[0]?.periodos || [];
+      let maxSit = 1;
+      let detalleEntidad = '';
+      let cantidadChequesRechazados = 0;
 
-      if (periodos.length > 0) {
-        const ultPeriodo = periodos[0];
-        const entidades = ultPeriodo.entidades || [];
-        const maxSit = Math.max(...entidades.map(e => e.situacion || 1), 1);
-
-        let textoSit = `Situación ${maxSit}: Normal`;
-        let colorSit = '#15803d';
-        let bgSit = '#f0fdf4';
-
-        if (maxSit === 2) { textoSit = 'Situación 2: Riesgo Bajo / Demora'; colorSit = '#b45309'; bgSit = '#fffbeb'; }
-        else if (maxSit === 3) { textoSit = 'Situación 3: Riesgo Medio / Problemático'; colorSit = '#d97706'; bgSit = '#fffbeb'; }
-        else if (maxSit === 4) { textoSit = 'Situación 4: Riesgo Alto / Alto Impago'; colorSit = '#dc2626'; bgSit = '#fef2f2'; }
-        else if (maxSit >= 5) { textoSit = 'Situación 5: Irrecuperable / Deudor Severo'; colorSit = '#991b1b'; bgSit = '#fef2f2'; }
-
-        setBcraStatusMap(prev => ({
-          ...prev,
-          [cuitLimpio]: { cargando: false, situacion: maxSit, texto: textoSit, color: colorSit, bg: bgSit }
-        }));
-      } else {
-        setBcraStatusMap(prev => ({
-          ...prev,
-          [cuitLimpio]: { cargando: false, situacion: 1, texto: '🟢 Sin deuda registrada en BCRA (Normal)', color: '#15803d', bg: '#f0fdf4' }
-        }));
+      if (resDeudas.ok) {
+        const jsonDeudas = await resDeudas.json();
+        const periodos = jsonDeudas.results?.periodos || [];
+        
+        if (periodos.length > 0) {
+          const entidades = periodos[0].entidades || [];
+          entidades.forEach(e => {
+            const sit = parseInt(e.situacion || 1, 10);
+            if (sit > maxSit) {
+              maxSit = sit;
+              detalleEntidad = e.entidad || '';
+            }
+          });
+        }
       }
-    } catch (e) {
+
+      // 2. Consultar Cheques Rechazados por CUIT
+      try {
+        const resCheques = await fetch(`https://api.bcra.gob.ar/centraldedeudores/v1.0/Deudas/ChequesRechazados/${cuitLimpio}`);
+        if (resCheques.ok) {
+          const jsonCheques = await resCheques.json();
+          const chequesList = jsonCheques.results?.cheques || jsonCheques.results || [];
+          if (Array.isArray(chequesList)) {
+            cantidadChequesRechazados = chequesList.length;
+          }
+        }
+      } catch (errChq) {
+        console.warn('Error consultando cheques rechazados:', errChq);
+      }
+
+      // 3. Determinar Semaforo de Diagnóstico
+      let textoSit = '🟢 Situación 1: Normal en BCRA (Sin moras)';
+      let colorSit = '#15803d';
+      let bgSit = '#f0fdf4';
+      let borderSit = '#bbf7d0';
+
+      if (cantidadChequesRechazados > 0) {
+        textoSit = `🚨 ATENCIÓN: Registra ${cantidadChequesRechazados} Cheque(s) Rechazado(s) en BCRA`;
+        colorSit = '#dc2626';
+        bgSit = '#fef2f2';
+        borderSit = '#fca5a5';
+      } else if (maxSit === 2) {
+        textoSit = `🟡 Situación 2: Riesgo Bajo / Atraso leve ${detalleEntidad ? `(${detalleEntidad})` : ''}`;
+        colorSit = '#b45309';
+        bgSit = '#fffbeb';
+        borderSit = '#fde68a';
+      } else if (maxSit === 3) {
+        textoSit = `⚠️ Situación 3: Riesgo Medio / Cumplimiento Deficiente ${detalleEntidad ? `(${detalleEntidad})` : ''}`;
+        colorSit = '#d97706';
+        bgSit = '#fffbeb';
+        borderSit = '#fcd34d';
+      } else if (maxSit === 4) {
+        textoSit = `🚨 Situación 4: Riesgo Alto / Alto Riesgo de Insolvencia ${detalleEntidad ? `(${detalleEntidad})` : ''}`;
+        colorSit = '#dc2626';
+        bgSit = '#fef2f2';
+        borderSit = '#fca5a5';
+      } else if (maxSit >= 5) {
+        textoSit = `🛑 Situación 5: IRRECUPERABLE / Deudor Incobrable ${detalleEntidad ? `(${detalleEntidad})` : ''}`;
+        colorSit = '#991b1b';
+        bgSit = '#fef2f2';
+        borderSit = '#f87171';
+      }
+
       setBcraStatusMap(prev => ({
         ...prev,
-        [cuitLimpio]: { cargando: false, situacion: 1, texto: '🟢 Sin irregularidades reportadas', color: '#15803d', bg: '#f0fdf4' }
+        [cuitLimpio]: { cargando: false, situacion: maxSit, chequesRechazados: cantidadChequesRechazados, texto: textoSit, color: colorSit, bg: bgSit, border: borderSit }
+      }));
+
+    } catch (e) {
+      console.error('Error al conectar con API BCRA:', e);
+      setBcraStatusMap(prev => ({
+        ...prev,
+        [cuitLimpio]: {
+          cargando: false,
+          situacion: 0,
+          texto: '🔍 BCRA no respondió. Hacé clic acá para verificar en La Macro portal',
+          color: '#0284c7',
+          bg: '#f0f9ff',
+          border: '#bae6fd',
+          esFallback: true
+        }
       }));
     }
   };
@@ -166,11 +219,12 @@ export default function ModalComprobante({ mostrar, onClose, supabase, clientes 
     }
 
     if (campo === 'cuit_emisor') {
-      // Limitar estrictamente a 11 números sin letras ni guiones
-      valorFinal = valor.replace(/\D/g, '').slice(0, 11);
+      // Permitir tipeo libre pero limpiar caracteres no numéricos para la consulta
+      valorFinal = valor;
+      const soloNumeros = valor.replace(/\D/g, '');
 
-      if (valorFinal.length === 11) {
-        consultarBcraAutomatico(valorFinal);
+      if (soloNumeros.length === 11) {
+        consultarBcraAutomatico(soloNumeros);
       }
     }
 
@@ -421,7 +475,7 @@ export default function ModalComprobante({ mostrar, onClose, supabase, clientes 
               </div>
             )}
 
-            {/* SECCIÓN DE MEDIOS DE PAGO CON LECTURA BCRA AUTOMÁTICA */}
+            {/* SECCIÓN DE MEDIOS DE PAGO CON LECTURA BCRA OFICIAL */}
             {esCobranza && (
               <div style={{ backgroundColor: '#f5f2eb', border: '1px solid #e5e0d8', borderRadius: '8px', padding: '1rem', marginTop: '0.5rem' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
@@ -471,22 +525,20 @@ export default function ModalComprobante({ mostrar, onClose, supabase, clientes 
                         <>
                           <div style={{ display: 'grid', gridTemplateColumns: '1.4fr 1fr 1fr', gap: '0.5rem' }}>
                             <div>
-                              <label style={{ fontSize: '0.7rem', color: '#78716c', fontWeight: 'bold' }}>CUIT Librador (11 dígs.)</label>
+                              <label style={{ fontSize: '0.7rem', color: '#78716c', fontWeight: 'bold' }}>CUIT Librador</label>
                               <input
                                 type="text"
-                                maxLength={11}
-                                placeholder="30123456789"
+                                placeholder="30-12345678-9"
                                 value={m.cuit_emisor}
                                 onChange={(e) => actualizarMedio(m.id, 'cuit_emisor', e.target.value)}
                                 style={{
                                   width: '100%',
                                   padding: '0.4rem',
                                   borderRadius: '4px',
-                                  border: cuitLimpio.length === 11 ? '1px solid #15803d' : '1px solid #dcd5c9',
-                                  backgroundColor: cuitLimpio.length === 11 ? '#f0fdf4' : '#fff',
+                                  border: cuitLimpio.length === 11 ? `1px solid ${infoBcra?.border || '#15803d'}` : '1px solid #dcd5c9',
+                                  backgroundColor: cuitLimpio.length === 11 ? (infoBcra?.bg || '#f0fdf4') : '#fff',
                                   boxSizing: 'border-box',
-                                  fontWeight: 'bold',
-                                  fontFamily: 'monospace'
+                                  fontWeight: 'bold'
                                 }}
                               />
                             </div>
@@ -500,13 +552,31 @@ export default function ModalComprobante({ mostrar, onClose, supabase, clientes 
                             </div>
                           </div>
 
-                          {/* CARTEL AUTOMÁTICO DE SEÑAL BCRA */}
+                          {/* CARTEL AUTOMÁTICO DE DIAGNÓSTICO DE RIESGO BCRA */}
                           {cuitLimpio.length === 11 && (
-                            <div style={{ marginTop: '0.4rem', padding: '0.4rem 0.6rem', borderRadius: '5px', fontSize: '0.75rem', fontWeight: 'bold', backgroundColor: infoBcra?.cargando ? '#f5f2eb' : (infoBcra?.bg || '#f0fdf4'), color: infoBcra?.cargando ? '#78716c' : (infoBcra?.color || '#15803d'), border: '1px solid #dcd5c9', display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                            <div 
+                              onClick={() => {
+                                if (infoBcra?.esFallback) window.open('https://www.lamacro.ar/central-de-deudores/', '_blank');
+                              }}
+                              style={{
+                                marginTop: '0.4rem',
+                                padding: '0.45rem 0.65rem',
+                                borderRadius: '5px',
+                                fontSize: '0.75rem',
+                                fontWeight: 'bold',
+                                backgroundColor: infoBcra?.cargando ? '#f5f2eb' : (infoBcra?.bg || '#f0fdf4'),
+                                color: infoBcra?.cargando ? '#78716c' : (infoBcra?.color || '#15803d'),
+                                border: `1px solid ${infoBcra?.border || '#dcd5c9'}`,
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '0.35rem',
+                                cursor: infoBcra?.esFallback ? 'pointer' : 'default'
+                              }}
+                            >
                               {infoBcra?.cargando ? (
-                                <span>⏳ Consultando situación en BCRA...</span>
+                                <span>⏳ Verificando situación en Central de Deudores BCRA...</span>
                               ) : (
-                                <span>{infoBcra?.texto || '🟢 Situación 1: Normal en BCRA'}</span>
+                                <span>{infoBcra?.texto || '🟢 Situación 1: Normal (Sin deudas ni moras)'}</span>
                               )}
                             </div>
                           )}
