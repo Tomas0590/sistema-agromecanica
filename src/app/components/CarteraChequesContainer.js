@@ -59,7 +59,15 @@ export default function CarteraChequesContainer({ supabase }) {
     }
   };
 
-  // Cálculo de alertas de vencimiento
+  const abrirConsultaBcra = (cuit) => {
+    if (!cuit) {
+      alert('Este cheque no posee CUIT de librador registrado.');
+      return;
+    }
+    const cuitLimpio = String(cuit).replace(/\D/g, '');
+    window.open(`https://www.lamacro.ar/central-de-deudores/`, '_blank');
+  };
+
   const getSemaforoVencimiento = (fechaPagoStr) => {
     const hoy = new Date();
     hoy.setHours(0,0,0,0);
@@ -78,6 +86,7 @@ export default function CarteraChequesContainer({ supabase }) {
     const matchTexto = 
       (c.banco || '').toLowerCase().includes(busqueda.toLowerCase()) ||
       (c.numero || '').includes(busqueda) ||
+      (c.cuit_emisor || '').includes(busqueda) ||
       (c.clientes?.razon_social || '').toLowerCase().includes(busqueda.toLowerCase());
     return matchEstado && matchTexto;
   });
@@ -91,10 +100,10 @@ export default function CarteraChequesContainer({ supabase }) {
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem', flexWrap: 'wrap', gap: '0.75rem' }}>
         <div>
           <h2 style={{ color: '#2b2927', margin: 0, fontSize: '1.35rem', fontWeight: '800' }}>
-            💼 Cartera de Cheques y ECHEQs
+            💳 Cartera de Cheques y ECHEQs
           </h2>
           <span style={{ fontSize: '0.85rem', color: '#78716c' }}>
-            Control de valores en mano, depósitos bancarios y seguimiento anti-vencimientos de Agromecanica
+            Control de valores en mano, CUIT de libradores, depósitos y seguimiento anti-vencimientos
           </span>
         </div>
       </div>
@@ -123,7 +132,7 @@ export default function CarteraChequesContainer({ supabase }) {
         </div>
       </div>
 
-      {/* SECCIÓN ALERTAS URGENTES SI EXISTEN */}
+      {/* ALERTAS URGENTES */}
       {chequesUrgentes.length > 0 && (
         <div style={{ backgroundColor: '#fff5f5', border: '1px solid #fecaca', borderRadius: '10px', padding: '1.25rem', marginBottom: '1.5rem' }}>
           <h3 style={{ margin: '0 0 0.75rem 0', color: '#dc2626', fontSize: '1rem', fontWeight: '800', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
@@ -138,7 +147,9 @@ export default function CarteraChequesContainer({ supabase }) {
                     <div style={{ fontWeight: 'bold', fontSize: '0.85rem', color: '#1c1917' }}>
                       {c.tipo === 'ECHEQ' ? '💻 ECHEQ' : '📜 FISICO'} #{c.numero} - {c.banco}
                     </div>
-                    <div style={{ fontSize: '0.75rem', color: '#57534e' }}>👤 {c.clientes?.razon_social || 'Cliente'}</div>
+                    <div style={{ fontSize: '0.75rem', color: '#57534e' }}>
+                      👤 {c.clientes?.razon_social || 'Cliente'} {c.cuit_emisor ? `(CUIT: ${c.cuit_emisor})` : ''}
+                    </div>
                     <div style={{ fontSize: '0.75rem', color: semaforo.color, fontWeight: 'bold', marginTop: '4px' }}>{semaforo.text}</div>
                   </div>
                   <div style={{ textAlign: 'right' }}>
@@ -164,10 +175,10 @@ export default function CarteraChequesContainer({ supabase }) {
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem', flexWrap: 'wrap', gap: '0.75rem' }}>
           <input
             type="text"
-            placeholder="🔍 Buscar por Banco, N° de cheque o Cliente..."
+            placeholder="🔍 Buscar por Banco, N° de cheque, CUIT o Cliente..."
             value={busqueda}
             onChange={(e) => setBusqueda(e.target.value)}
-            style={{ flex: 1, maxWidth: '380px', padding: '0.6rem 0.85rem', borderRadius: '8px', border: '1px solid #dcd5c9', backgroundColor: '#f5f2eb' }}
+            style={{ flex: 1, maxWidth: '420px', padding: '0.6rem 0.85rem', borderRadius: '8px', border: '1px solid #dcd5c9', backgroundColor: '#f5f2eb' }}
           />
 
           <div style={{ display: 'flex', gap: '0.35rem' }}>
@@ -198,7 +209,7 @@ export default function CarteraChequesContainer({ supabase }) {
               <tr style={{ backgroundColor: '#eeeae1', color: '#44403c', borderBottom: '2px solid #dcd5c9' }}>
                 <th style={{ padding: '0.75rem' }}>Tipo / N°</th>
                 <th style={{ padding: '0.75rem' }}>Banco</th>
-                <th style={{ padding: '0.75rem' }}>Cliente (Emisor)</th>
+                <th style={{ padding: '0.75rem' }}>Cliente / CUIT Librador</th>
                 <th style={{ padding: '0.75rem' }}>F. Cobro / Venc.</th>
                 <th style={{ padding: '0.75rem', textAlign: 'right' }}>Monto</th>
                 <th style={{ padding: '0.75rem', textAlign: 'center' }}>Estado / Destino</th>
@@ -228,8 +239,21 @@ export default function CarteraChequesContainer({ supabase }) {
                         {c.tipo === 'ECHEQ' ? '💻 ECHEQ' : '📜 FISICO'} #{c.numero}
                       </td>
                       <td style={{ padding: '0.75rem' }}>{c.banco}</td>
-                      <td style={{ padding: '0.75rem', color: '#1c1917', fontWeight: 'bold' }}>
-                        👤 {c.clientes?.razon_social || 'Desconocido'}
+                      <td style={{ padding: '0.75rem', color: '#1c1917' }}>
+                        <div style={{ fontWeight: 'bold' }}>👤 {c.clientes?.razon_social || 'Desconocido'}</div>
+                        {c.cuit_emisor && (
+                          <div style={{ fontSize: '0.75rem', color: '#57534e', display: 'flex', alignItems: 'center', gap: '0.3rem', marginTop: '2px' }}>
+                            <span>CUIT: {c.cuit_emisor}</span>
+                            <button
+                              type="button"
+                              onClick={() => abrirConsultaBcra(c.cuit_emisor)}
+                              title="Verificar deudores en BCRA"
+                              style={{ background: 'none', border: 'none', color: '#0284c7', cursor: 'pointer', fontSize: '0.7rem', padding: 0, textDecoration: 'underline' }}
+                            >
+                              🔍 BCRA
+                            </button>
+                          </div>
+                        )}
                       </td>
                       <td style={{ padding: '0.75rem' }}>
                         <span style={{ display: 'inline-block', padding: '0.2rem 0.5rem', borderRadius: '4px', fontSize: '0.75rem', fontWeight: 'bold', backgroundColor: semaforo.bg, color: semaforo.color }}>
