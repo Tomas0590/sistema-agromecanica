@@ -28,7 +28,6 @@ export default function ModalComprobante({ mostrar, onClose, supabase, clientes 
     setMounted(true);
   }, []);
 
-  // AUTO-CALCULAR PRÓXIMO NÚMERO AL ABRIR O CAMBIAR EL TIPO DE COMPROBANTE
   useEffect(() => {
     if (mostrar) {
       obtenerProximoNumero(tipo);
@@ -48,7 +47,6 @@ export default function ModalComprobante({ mostrar, onClose, supabase, clientes 
 
   const esCobranza = tipo === 'RECIBO_COBRANZA';
 
-  // Buscar el último número registrado para sugerir correlatividad
   const obtenerProximoNumero = async (tipoComprobante) => {
     setCargandoNumero(true);
     try {
@@ -61,7 +59,6 @@ export default function ModalComprobante({ mostrar, onClose, supabase, clientes 
         .limit(20);
 
       if (!error && data && data.length > 0) {
-        // Extraer los valores numéricos limpios para hallar el máximo histórico
         const numerosExistentes = data
           .map(d => parseInt(String(d.numero).replace(/\D/g, ''), 10))
           .filter(n => !isNaN(n));
@@ -162,7 +159,12 @@ export default function ModalComprobante({ mostrar, onClose, supabase, clientes 
 
     let obsDetalle = observaciones;
     if (esCobranza && mediosPago.length > 0) {
-      const resumenMedios = mediosPago.map(m => `${m.metodo}: $${m.monto}`).join(' | ');
+      const resumenMedios = mediosPago.map(m => {
+        if (m.metodo === 'CHEQUE_FISICO' || m.metodo === 'ECHEQ') {
+          return `${m.metodo} #${m.numero || 'S/N'} (${m.banco || 'S/B'}) CUIT: ${m.cuit_emisor || 'S/C'}: $${m.monto}`;
+        }
+        return `${m.metodo}: $${m.monto}`;
+      }).join(' | ');
       obsDetalle = observaciones ? `${observaciones} (${resumenMedios})` : resumenMedios;
     }
 
@@ -191,7 +193,7 @@ export default function ModalComprobante({ mostrar, onClose, supabase, clientes 
 
     const listadoImputaciones = [];
 
-    // 2. Si es Cobranza, procesar las facturas canceladas e imputaciones
+    // 2. Si es Cobranza, procesar facturas canceladas
     if (esCobranza && compData) {
       for (const [factId, montoCancela] of Object.entries(facturasSeleccionadas)) {
         const montoNum = parseFloat(montoCancela) || 0;
@@ -217,7 +219,7 @@ export default function ModalComprobante({ mostrar, onClose, supabase, clientes 
         }
       }
 
-      // 3. Guardar cheques en la cartera
+      // 3. Guardar cheques en la cartera guardando el CUIT de emisor
       const chequesAGuardar = mediosPago
         .filter(m => m.metodo === 'CHEQUE_FISICO' || m.metodo === 'ECHEQ')
         .map(c => ({
@@ -400,6 +402,29 @@ export default function ModalComprobante({ mostrar, onClose, supabase, clientes 
                           </>
                         )}
                       </div>
+
+                      {esCheque && (
+                        <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr 1fr', gap: '0.5rem' }}>
+                          <div>
+                            <label style={{ fontSize: '0.7rem', color: '#78716c', fontWeight: 'bold' }}>CUIT Librador / Emisor</label>
+                            <input
+                              type="text"
+                              placeholder="30-12345678-9"
+                              value={m.cuit_emisor}
+                              onChange={(e) => actualizarMedio(m.id, 'cuit_emisor', e.target.value)}
+                              style={{ width: '100%', padding: '0.4rem', borderRadius: '4px', border: '1px solid #dcd5c9', boxSizing: 'border-box' }}
+                            />
+                          </div>
+                          <div>
+                            <label style={{ fontSize: '0.7rem', color: '#78716c', fontWeight: 'bold' }}>F. Emisión</label>
+                            <input type="date" value={m.fecha_emision} onChange={(e) => actualizarMedio(m.id, 'fecha_emision', e.target.value)} style={{ width: '100%', padding: '0.4rem', borderRadius: '4px', border: '1px solid #dcd5c9', boxSizing: 'border-box' }} />
+                          </div>
+                          <div>
+                            <label style={{ fontSize: '0.7rem', color: '#dc2626', fontWeight: 'bold' }}>F. Cobro (Venc.)</label>
+                            <input type="date" value={m.fecha_pago} onChange={(e) => actualizarMedio(m.id, 'fecha_pago', e.target.value)} style={{ width: '100%', padding: '0.4rem', borderRadius: '4px', border: '1px solid #dcd5c9', boxSizing: 'border-box' }} />
+                          </div>
+                        </div>
+                      )}
                     </div>
                   );
                 })}
@@ -426,7 +451,6 @@ export default function ModalComprobante({ mostrar, onClose, supabase, clientes 
         </div>
       </div>
 
-      {/* PDF RECIBO GENERADO */}
       <ModalReciboPDF
         mostrar={Boolean(reciboGenerado)}
         onClose={() => {
