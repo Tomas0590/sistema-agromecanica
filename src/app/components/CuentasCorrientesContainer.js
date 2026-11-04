@@ -21,6 +21,11 @@ export default function CuentasCorrientesContainer({ supabase }) {
   const [clienteSeleccionadoResumen, setClienteSeleccionadoResumen] = useState(null);
   const [reciboParaVer, setReciboParaVer] = useState(null);
 
+  // Estado para la edición directa al clickear una fila del historial
+  const [editandoCompId, setEditandoCompId] = useState(null);
+  const [editForm, setEditForm] = useState({ numero: '', fecha_emision: '', monto: '', observaciones: '' });
+  const [guardandoEdicion, setGuardandoEdicion] = useState(false);
+
   useEffect(() => {
     cargarSaldos();
     cargarComprobantes();
@@ -63,8 +68,69 @@ export default function CuentasCorrientesContainer({ supabase }) {
     }
   };
 
-  const handleVerRecibo = async (comp) => {
-    // Si es un recibo, armamos los datos completos para previsualizar/imprimir
+  // Iniciar edición al clickear una fila
+  const handleClicFilaComprobante = (comp) => {
+    if (editandoCompId === comp.id) return;
+    setEditandoCompId(comp.id);
+    const esDebe = parseFloat(comp.debe || 0) > 0;
+    setEditForm({
+      numero: comp.numero || '',
+      fecha_emision: comp.fecha_emision || '',
+      monto: esDebe ? comp.debe : comp.haber,
+      observaciones: comp.observaciones || ''
+    });
+  };
+
+  const handleGuardarEdicionFila = async (comp, e) => {
+    e.stopPropagation();
+    setGuardandoEdicion(true);
+    const esDebe = parseFloat(comp.debe || 0) > 0;
+    const montoNum = parseFloat(editForm.monto) || 0;
+
+    const { error } = await supabase
+      .from('comprobantes_cc')
+      .update({
+        numero: editForm.numero || null,
+        fecha_emision: editForm.fecha_emision,
+        debe: esDebe ? montoNum : 0,
+        haber: !esDebe ? montoNum : 0,
+        observaciones: editForm.observaciones || null
+      })
+      .eq('id', comp.id);
+
+    setGuardandoEdicion(false);
+
+    if (error) {
+      alert(`Error al actualizar comprobante: ${error.message}`);
+    } else {
+      setEditandoCompId(null);
+      await cargarSaldos();
+      await cargarComprobantes();
+    }
+  };
+
+  const handleEliminarComprobanteFila = async (comp, e) => {
+    e.stopPropagation();
+    if (!confirm(`¿Estás seguro de eliminar el comprobante ${formatearTipo(comp.tipo)} ${comp.numero ? `#${comp.numero}` : ''}?`)) {
+      return;
+    }
+
+    const { error } = await supabase
+      .from('comprobantes_cc')
+      .delete()
+      .eq('id', comp.id);
+
+    if (error) {
+      alert(`Error al eliminar: ${error.message}`);
+    } else {
+      setEditandoCompId(null);
+      await cargarSaldos();
+      await cargarComprobantes();
+    }
+  };
+
+  const handleVerRecibo = async (comp, e) => {
+    e.stopPropagation();
     const { data: clienteObj } = await supabase
       .from('clientes')
       .select('*')
@@ -273,7 +339,7 @@ export default function CuentasCorrientesContainer({ supabase }) {
         </div>
       )}
 
-      {/* TABLA DE VISTA 2: LISTADO GENERAL DE COMPROBANTES */}
+      {/* TABLA DE VISTA 2: LISTADO GENERAL DE COMPROBANTES CON EDICIÓN AL CLICKEAR */}
       {vistaActual === 'comprobantes' && (
         <div style={{ backgroundColor: '#fcfbf9', borderRadius: '10px', border: '1px solid #e5e0d8', padding: '1.25rem' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem', flexWrap: 'wrap', gap: '0.75rem' }}>
@@ -317,7 +383,7 @@ export default function CuentasCorrientesContainer({ supabase }) {
                   <th style={{ padding: '0.75rem' }}>Detalle / Obs.</th>
                   <th style={{ padding: '0.75rem', textAlign: 'right' }}>Debe (+)</th>
                   <th style={{ padding: '0.75rem', textAlign: 'right' }}>Haber (-)</th>
-                  <th style={{ padding: '0.75rem', textAlign: 'center' }}>Acción</th>
+                  <th style={{ padding: '0.75rem', textAlign: 'center' }}>Acciones</th>
                 </tr>
               </thead>
               <tbody>
@@ -335,12 +401,91 @@ export default function CuentasCorrientesContainer({ supabase }) {
                   </tr>
                 ) : (
                   comprobantesFiltrados.map((comp) => {
+                    const estaEditando = editandoCompId === comp.id;
                     const esRecibo = comp.tipo === 'RECIBO_COBRANZA';
                     const debeNum = parseFloat(comp.debe || 0);
                     const haberNum = parseFloat(comp.haber || 0);
 
+                    if (estaEditando) {
+                      return (
+                        <tr key={comp.id} style={{ backgroundColor: '#fefce8', borderBottom: '1px solid #fef08a' }}>
+                          <td style={{ padding: '0.4rem' }}>
+                            <input
+                              type="date"
+                              value={editForm.fecha_emision}
+                              onChange={(e) => setEditForm({ ...editForm, fecha_emision: e.target.value })}
+                              style={{ padding: '0.35rem', borderRadius: '4px', border: '1px solid #dcd5c9', fontSize: '0.75rem' }}
+                            />
+                          </td>
+                          <td style={{ padding: '0.4rem' }}>
+                            <span style={{ fontWeight: 'bold', fontSize: '0.75rem' }}>{formatearTipo(comp.tipo)}</span>
+                            <input
+                              type="text"
+                              placeholder="N°"
+                              value={editForm.numero}
+                              onChange={(e) => setEditForm({ ...editForm, numero: e.target.value })}
+                              style={{ padding: '0.35rem', borderRadius: '4px', border: '1px solid #dcd5c9', fontSize: '0.75rem', width: '80px', marginLeft: '4px' }}
+                            />
+                          </td>
+                          <td style={{ padding: '0.4rem', fontWeight: 'bold', fontSize: '0.8rem' }}>
+                            👤 {comp.clientes?.razon_social}
+                          </td>
+                          <td style={{ padding: '0.4rem' }}>
+                            <input
+                              type="text"
+                              placeholder="Observaciones"
+                              value={editForm.observaciones}
+                              onChange={(e) => setEditForm({ ...editForm, observaciones: e.target.value })}
+                              style={{ padding: '0.35rem', borderRadius: '4px', border: '1px solid #dcd5c9', fontSize: '0.75rem', width: '100%' }}
+                            />
+                          </td>
+                          <td colSpan={2} style={{ padding: '0.4rem', textAlign: 'right' }}>
+                            <input
+                              type="number"
+                              step="0.01"
+                              value={editForm.monto}
+                              onChange={(e) => setEditForm({ ...editForm, monto: e.target.value })}
+                              style={{ padding: '0.35rem', borderRadius: '4px', border: '1px solid #dcd5c9', fontSize: '0.75rem', width: '90px', fontWeight: 'bold' }}
+                            />
+                          </td>
+                          <td style={{ padding: '0.4rem', textAlign: 'center' }}>
+                            <div style={{ display: 'flex', gap: '0.25rem', justifyContent: 'center' }}>
+                              <button
+                                onClick={(e) => handleGuardarEdicionFila(comp, e)}
+                                disabled={guardandoEdicion}
+                                title="Guardar cambios"
+                                style={{ background: '#15803d', color: '#fff', border: 'none', padding: '0.35rem 0.6rem', borderRadius: '4px', cursor: 'pointer', fontSize: '0.75rem', fontWeight: 'bold' }}
+                              >
+                                ✓ Guardar
+                              </button>
+                              <button
+                                onClick={(e) => handleEliminarComprobanteFila(comp, e)}
+                                title="Eliminar comprobante"
+                                style={{ background: '#dc2626', color: '#fff', border: 'none', padding: '0.35rem 0.6rem', borderRadius: '4px', cursor: 'pointer', fontSize: '0.75rem', fontWeight: 'bold' }}
+                              >
+                                🗑️ Eliminar
+                              </button>
+                              <button
+                                onClick={(e) => { e.stopPropagation(); setEditandoCompId(null); }}
+                                style={{ background: '#eeeae1', color: '#44403c', border: 'none', padding: '0.35rem 0.5rem', borderRadius: '4px', cursor: 'pointer', fontSize: '0.75rem' }}
+                              >
+                                ✕
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    }
+
                     return (
-                      <tr key={comp.id} style={{ borderBottom: '1px solid #eeeae1' }}>
+                      <tr 
+                        key={comp.id} 
+                        onClick={() => handleClicFilaComprobante(comp)}
+                        title="Hacé clic sobre esta fila para editar o eliminar el comprobante"
+                        style={{ borderBottom: '1px solid #eeeae1', cursor: 'pointer', transition: 'background-color 0.15s ease' }}
+                        onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#fdfbf7'}
+                        onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+                      >
                         <td style={{ padding: '0.75rem', whiteSpace: 'nowrap' }}>{comp.fecha_emision}</td>
                         <td style={{ padding: '0.75rem', fontWeight: 'bold' }}>
                           {formatearTipo(comp.tipo)} {comp.numero ? `#${comp.numero}` : ''}
@@ -361,7 +506,7 @@ export default function CuentasCorrientesContainer({ supabase }) {
                           {esRecibo && (
                             <button
                               type="button"
-                              onClick={() => handleVerRecibo(comp)}
+                              onClick={(e) => handleVerRecibo(comp, e)}
                               title="Ver / Reimprimir Recibo PDF"
                               style={{ background: '#f5f2eb', border: '1px solid #dcd5c9', borderRadius: '4px', padding: '0.25rem 0.5rem', cursor: 'pointer', fontSize: '0.75rem', fontWeight: 'bold' }}
                             >
