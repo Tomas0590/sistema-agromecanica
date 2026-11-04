@@ -119,6 +119,15 @@ export default function ModalComprobante({ mostrar, onClose, supabase, clientes 
     setMediosPago(mediosPago.filter(m => m.id !== id));
   };
 
+  // Función para abrir la verificación BCRA en La Macro directamente con el CUIT del librador
+  const consultarBcraLibrador = (cuit) => {
+    if (!cuit || cuit.replace(/\D/g, '').length < 10) {
+      alert('Ingresá un CUIT válido (11 dígitos) para consultar en BCRA.');
+      return;
+    }
+    window.open('https://www.lamacro.ar/central-de-deudores/', '_blank');
+  };
+
   const toggleFacturaSeleccionada = (factura) => {
     const id = factura.id;
     const saldoPend = factura.saldo_pendiente === null ? factura.debe : factura.saldo_pendiente;
@@ -261,7 +270,7 @@ export default function ModalComprobante({ mostrar, onClose, supabase, clientes 
   const modalUI = (
     <>
       <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0, 0, 0, 0.5)', backdropFilter: 'blur(3px)', zIndex: 999999 }} onClick={onClose}>
-        <div style={{ position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', background: '#fcfbf9', border: '1px solid #e5e0d8', borderRadius: '14px', width: '94%', maxWidth: '700px', maxHeight: '90vh', overflowY: 'auto', padding: '1.75rem', color: '#2b2927', boxShadow: '0 12px 30px rgba(0,0,0,0.3)', boxSizing: 'border-box' }} onClick={(e) => e.stopPropagation()}>
+        <div style={{ position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', background: '#fcfbf9', border: '1px solid #e5e0d8', borderRadius: '14px', width: '94%', maxWidth: '720px', maxHeight: '90vh', overflowY: 'auto', padding: '1.75rem', color: '#2b2927', boxShadow: '0 12px 30px rgba(0,0,0,0.3)', boxSizing: 'border-box' }} onClick={(e) => e.stopPropagation()}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem', borderBottom: '2px solid #eeeae1', paddingBottom: '0.85rem' }}>
             <h3 style={{ margin: 0, color: '#15803d', fontSize: '1.2rem', fontWeight: '800' }}>💵 Cargar Comprobante / Cobranza</h3>
             <button onClick={onClose} style={{ background: '#eeeae1', border: 'none', borderRadius: '50%', width: '32px', height: '32px', cursor: 'pointer', fontWeight: 'bold' }}>✕</button>
@@ -359,7 +368,7 @@ export default function ModalComprobante({ mostrar, onClose, supabase, clientes 
               </div>
             )}
 
-            {/* SECCIÓN DE MEDIOS DE PAGO */}
+            {/* SECCIÓN DE MEDIOS DE PAGO CON VERIFICADOR DIRECTO DE BCRA */}
             {esCobranza && (
               <div style={{ backgroundColor: '#f5f2eb', border: '1px solid #e5e0d8', borderRadius: '8px', padding: '1rem', marginTop: '0.5rem' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
@@ -374,6 +383,8 @@ export default function ModalComprobante({ mostrar, onClose, supabase, clientes 
 
                 {mediosPago.map((m) => {
                   const esCheque = m.metodo === 'CHEQUE_FISICO' || m.metodo === 'ECHEQ';
+                  const cuitLimpio = String(m.cuit_emisor || '').replace(/\D/g, '');
+                  const cuitValido = cuitLimpio.length >= 10;
 
                   return (
                     <div key={m.id} style={{ background: '#fff', border: '1px solid #dcd5c9', borderRadius: '6px', padding: '0.75rem', marginBottom: '0.6rem' }}>
@@ -404,15 +415,43 @@ export default function ModalComprobante({ mostrar, onClose, supabase, clientes 
                       </div>
 
                       {esCheque && (
-                        <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr 1fr', gap: '0.5rem' }}>
+                        <div style={{ display: 'grid', gridTemplateColumns: '1.4fr 1fr 1fr', gap: '0.5rem' }}>
                           <div>
-                            <label style={{ fontSize: '0.7rem', color: '#78716c', fontWeight: 'bold' }}>CUIT Librador / Emisor</label>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                              <label style={{ fontSize: '0.7rem', color: '#78716c', fontWeight: 'bold' }}>CUIT Librador</label>
+                              {cuitValido && (
+                                <button
+                                  type="button"
+                                  onClick={() => consultarBcraLibrador(m.cuit_emisor)}
+                                  style={{
+                                    border: 'none',
+                                    background: '#0284c7',
+                                    color: '#fff',
+                                    borderRadius: '3px',
+                                    fontSize: '0.65rem',
+                                    padding: '0.1rem 0.35rem',
+                                    cursor: 'pointer',
+                                    fontWeight: 'bold'
+                                  }}
+                                >
+                                  🔍 Ver Riesgo BCRA
+                                </button>
+                              )}
+                            </div>
                             <input
                               type="text"
                               placeholder="30-12345678-9"
                               value={m.cuit_emisor}
                               onChange={(e) => actualizarMedio(m.id, 'cuit_emisor', e.target.value)}
-                              style={{ width: '100%', padding: '0.4rem', borderRadius: '4px', border: '1px solid #dcd5c9', boxSizing: 'border-box' }}
+                              style={{
+                                width: '100%',
+                                padding: '0.4rem',
+                                borderRadius: '4px',
+                                border: cuitValido ? '1px solid #0284c7' : '1px solid #dcd5c9',
+                                backgroundColor: cuitValido ? '#f0f9ff' : '#fff',
+                                boxSizing: 'border-box',
+                                fontWeight: cuitValido ? 'bold' : 'normal'
+                              }}
                             />
                           </div>
                           <div>
