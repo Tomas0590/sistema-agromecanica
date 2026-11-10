@@ -214,4 +214,57 @@ export default function FormProducto({
                     value={precioVenta}
                     onChange={(e) => setPrecioVenta(e.target.value)}
                     required
-                    style={{ width: '100%', padding: '0.5rem 0.7
+                    style={{ width: '100%', padding: '0.5rem 0.7rem', borderRadius: '6px', border: '1px solid #22c55e', background: '#1e293b', color: '#fff', fontSize: '0.95rem', fontWeight: 'bold', boxSizing: 'border-box' }}
+                  />
+                </div>
+              )}
+            </div>
+
+            {esUsd && (
+              <span style={{ fontSize: '0.7rem', color: '#94a3b8', marginTop: '0.4rem', display: 'block' }}>
+                💡 Cotización Dólar BNA Venta de referencia: <strong>${cotizacionBna}</strong>
+              </span>
+            )}
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem', marginBottom: '1.5rem' }}>
+            <div>
+              <label style={{ display: 'block', fontSize: '0.85rem', color: '#cbd5e1', marginBottom: '0.35rem' }}>Stock Actual</label>
+              <input
+                type="number"
+                value={stockActual}
+                onChange={(e) => setStockActual(e.target.value)}
+                style={{ width: '100%', padding: '0.6rem 0.8rem', borderRadius: '6px', border: '1px solid #475569', background: '#0f172a', color: '#fff', fontSize: '0.9rem', outline: 'none', boxSizing: 'border-box' }}
+              />
+            </div>
+            <div>
+              <label style={{ display: 'block', fontSize: '0.85rem', color: '#cbd5e1', marginBottom: '0.35rem' }}>Stock Mínimo</label>
+              <input
+                type="number"
+                value={stockMinimo}
+                onChange={(e) => setStockMinimo(e.target.value)}
+                style={{ width: '100%', padding: '0.6rem 0.8rem', borderRadius: '6px', border: '1px solid #475569', background: '#0f172a', color: '#fff', fontSize: '0.9rem', outline: 'none', boxSizing: 'border-box' }}
+              />
+            </div>
+          </div>
+
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem', borderTop: '1px solid #334155', paddingTop: '1rem' }}>
+            <button
+              type="button"
+              onClick={onCancelar}
+              style={{ background: '#334155', color: '#cbd5e1', border: 'none', padding: '0.6rem 1.2rem', borderRadius: '6px', fontWeight: 'bold', cursor: 'pointer', fontSize: '0.9rem' }}
+            >
+              Cancelar
+            </button>
+            <button
+              type="submit"
+              style={{ background: editingId ? '#d97706' : '#16a34a', color: '#fff', border: 'none', padding: '0.6rem 1.4rem', borderRadius: '6px', fontWeight: 'bold', cursor: 'pointer', fontSize: '0.9rem' }}
+            >
+              {editingId ? 'Guardar Cambios' : 'Guardar Producto'}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
