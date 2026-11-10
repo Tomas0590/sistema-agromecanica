@@ -6,12 +6,12 @@ import { useState, useEffect } from 'react';
 import { createClient } from '@supabase/supabase-js';
 import dynamicComponent from 'next/dynamic';
 
-const Navbar = dynamicComponent(() => import('./components/Navbar'), { ssr: false });
-const ClientesContainer = dynamicComponent(() => import('./components/ClientesContainer'), { ssr: false });
-const CuentasCorrientesContainer = dynamicComponent(() => import('./components/CuentasCorrientesContainer'), { ssr: false });
-const CarteraChequesContainer = dynamicComponent(() => import('./components/CarteraChequesContainer'), { ssr: false });
-const StockContainer = dynamicComponent(() => import('./components/StockContainer'), { ssr: false });
-const ProveedoresContainer = dynamicComponent(() => import('./components/ProveedoresContainer'), { ssr: false });
+const Navbar = dynamicComponent(() => import('./components/layout/Navbar'), { ssr: false });
+const ClientesContainer = dynamicComponent(() => import('./components/clientes/ClientesContainer'), { ssr: false });
+const CuentasCorrientesContainer = dynamicComponent(() => import('./components/cuentas-corrientes/CuentasCorrientesContainer'), { ssr: false });
+const CarteraChequesContainer = dynamicComponent(() => import('./components/cheques/CarteraChequesContainer'), { ssr: false });
+const StockContainer = dynamicComponent(() => import('./components/stock/StockContainer'), { ssr: false });
+const ProveedoresContainer = dynamicComponent(() => import('./components/proveedores/ProveedoresContainer'), { ssr: false });
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
