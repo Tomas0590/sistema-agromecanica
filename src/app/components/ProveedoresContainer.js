@@ -3,12 +3,12 @@
 import { useState, useEffect } from 'react';
 import ModalProveedor from './ModalProveedor';
 import ModalComprobanteProveedor from './ModalComprobanteProveedor';
+import ModalResumenProveedorPDF from './ModalResumenProveedorPDF';
 
 export default function ProveedoresContainer({ supabase }) {
   const [proveedores, setProveedores] = useState([]);
   const [comprobantes, setComprobantes] = useState([]);
   const [cargando, setCargando] = useState(true);
-  const [vistaActual, setVistaActual] = useState('saldos'); // 'saldos' | 'comprobantes'
   const [busqueda, setBusqueda] = useState('');
 
   // Cotización Dólar BNA Venta de referencia
@@ -17,6 +17,10 @@ export default function ProveedoresContainer({ supabase }) {
   // Modales
   const [mostrarModalNuevoProv, setMostrarModalNuevoProv] = useState(false);
   const [mostrarModalComprobante, setMostrarModalComprobante] = useState(false);
+  
+  // Modal Resumen PDF
+  const [proveedorSeleccionadoPdf, setProveedorSeleccionadoPdf] = useState(null);
+  const [mostrarModalPdf, setMostrarModalPdf] = useState(false);
 
   useEffect(() => {
     cargarDolar();
@@ -69,6 +73,11 @@ export default function ProveedoresContainer({ supabase }) {
     }
   };
 
+  const abrirResumenPdf = (prov) => {
+    setProveedorSeleccionadoPdf(prov);
+    setMostrarModalPdf(true);
+  };
+
   const proveedoresFiltrados = proveedores.filter(p =>
     (p.razon_social || '').toLowerCase().includes(busqueda.toLowerCase()) ||
     (p.cuit || '').includes(busqueda)
@@ -86,7 +95,7 @@ export default function ProveedoresContainer({ supabase }) {
             🏢 Proveedores y Cuentas por Pagar
           </h2>
           <span style={{ fontSize: '0.85rem', color: '#78716c' }}>
-            Gestión de facturas de compra (ARS / USD), órdenes de pago y endoso de cheques
+            Gestión de facturas de compra (ARS / USD), órdenes de pago y resumen en PDF
           </span>
         </div>
 
@@ -153,7 +162,7 @@ export default function ProveedoresContainer({ supabase }) {
                 <th style={{ padding: '0.75rem 1rem' }}>CUIT</th>
                 <th style={{ padding: '0.75rem 1rem', textAlign: 'right' }}>Saldo ARS ($)</th>
                 <th style={{ padding: '0.75rem 1rem', textAlign: 'right' }}>Saldo USD</th>
-                <th style={{ padding: '0.75rem 1rem', textAlign: 'center' }}>Últ. Movimiento</th>
+                <th style={{ padding: '0.75rem 1rem', textAlign: 'center' }}>Acciones / Resumen</th>
               </tr>
             </thead>
             <tbody>
@@ -188,8 +197,13 @@ export default function ProveedoresContainer({ supabase }) {
                       <td style={{ padding: '0.85rem 1rem', textAlign: 'right', fontWeight: 'bold', color: saldoUsd > 0 ? '#0284c7' : '#78716c' }}>
                         {saldoUsd > 0 ? `USD ${saldoUsd.toLocaleString('es-AR', { minimumFractionDigits: 2 })}` : '-'}
                       </td>
-                      <td style={{ padding: '0.85rem 1rem', textAlign: 'center', color: '#78716c', fontSize: '0.8rem' }}>
-                        {p.fecha_ultimo_movimiento || 'Sin movimientos'}
+                      <td style={{ padding: '0.85rem 1rem', textAlign: 'center' }}>
+                        <button
+                          onClick={() => abrirResumenPdf(p)}
+                          style={{ background: '#eeeae1', border: '1px solid #dcd5c9', color: '#2b2927', padding: '0.35rem 0.7rem', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold', fontSize: '0.75rem' }}
+                        >
+                          📄 Resumen / PDF
+                        </button>
                       </td>
                     </tr>
                   );
@@ -218,6 +232,14 @@ export default function ProveedoresContainer({ supabase }) {
           cargarProveedores();
           cargarComprobantes();
         }}
+      />
+
+      <ModalResumenProveedorPDF
+        mostrar={mostrarModalPdf}
+        onClose={() => setMostrarModalPdf(false)}
+        proveedor={proveedorSeleccionadoPdf}
+        comprobantes={comprobantes}
+        cotizacionBna={cotizacionBna}
       />
     </div>
   );
