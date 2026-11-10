@@ -11,6 +11,7 @@ const ClientesContainer = dynamicComponent(() => import('./components/ClientesCo
 const CuentasCorrientesContainer = dynamicComponent(() => import('./components/CuentasCorrientesContainer'), { ssr: false });
 const CarteraChequesContainer = dynamicComponent(() => import('./components/CarteraChequesContainer'), { ssr: false });
 const StockContainer = dynamicComponent(() => import('./components/StockContainer'), { ssr: false });
+const ProveedoresContainer = dynamicComponent(() => import('./components/ProveedoresContainer'), { ssr: false });
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
@@ -186,6 +187,10 @@ export default function Home() {
 
         {activeTab === 'stock' && (
           <StockContainer supabase={supabase} />
+        )}
+
+        {activeTab === 'proveedores' && (
+          <ProveedoresContainer supabase={supabase} />
         )}
 
         {activeTab === 'pedidos' && (
