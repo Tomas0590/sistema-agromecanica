@@ -6,6 +6,7 @@ export default function Navbar({ activeTab, setActiveTab, onLogout }) {
     { id: 'cuentas_corrientes', label: '📊 Cuentas Corrientes' },
     { id: 'cartera_valores', label: '💳 Cartera de Valores' },
     { id: 'stock', label: '📦 Stock' },
+    { id: 'proveedores', label: '🏢 Proveedores / Compras' },
     { id: 'pedidos', label: '🛒 Pedidos de Venta' },
   ];
 
@@ -55,7 +56,7 @@ export default function Navbar({ activeTab, setActiveTab, onLogout }) {
           })}
         </nav>
 
-        {/* BOTÓN SALIR RESPETA PALETA OSCURA/GRIS */}
+        {/* BOTÓN SALIR */}
         <button
           onClick={onLogout}
           style={{
