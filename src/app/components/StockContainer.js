@@ -9,6 +9,10 @@ export default function StockContainer({ supabase }) {
   const [productos, setProductos] = useState([]);
   const [categoriasLista, setCategoriasLista] = useState([]);
 
+  // Cotización Dólar Venta Billete BNA
+  const [cotizacionBna, setCotizacionBna] = useState(1200);
+  const [cargandoDolar, setCargandoDolar] = useState(true);
+
   const [editingProductoId, setEditingProductoId] = useState(null);
   const [sku, setSku] = useState('');
   const [descripcion, setDescripcion] = useState('');
@@ -18,6 +22,8 @@ export default function StockContainer({ supabase }) {
   const [ubicacion, setUbicacion] = useState('');
   const [precioCosto, setPrecioCosto] = useState(0);
   const [precioVenta, setPrecioVenta] = useState(0);
+  const [precioUsd, setPrecioUsd] = useState(0);
+  const [moneda, setMoneda] = useState('ARS');
   const [stockActual, setStockActual] = useState(0);
   const [stockMinimo, setStockMinimo] = useState(0);
 
@@ -26,9 +32,25 @@ export default function StockContainer({ supabase }) {
   const [mensajeProducto, setMensajeProducto] = useState('');
 
   useEffect(() => {
+    cargarCotizacionBna();
     cargarProductos();
     cargarCategorias();
   }, []);
+
+  const cargarCotizacionBna = async () => {
+    setCargandoDolar(true);
+    try {
+      const res = await fetch('https://dolarapi.com/v1/dolares/oficial');
+      if (res.ok) {
+        const data = await res.json();
+        if (data.venta) setCotizacionBna(parseFloat(data.venta));
+      }
+    } catch (e) {
+      console.error('Error cargando dólar BNA:', e);
+    } finally {
+      setCargandoDolar(false);
+    }
+  };
 
   const cargarProductos = async () => {
     const { data, error } = await supabase.from('productos').select('*').order('created_at', { ascending: false });
@@ -50,7 +72,6 @@ export default function StockContainer({ supabase }) {
     if (!error) cargarCategorias();
   };
 
-  // Listas desplegables dinamicas
   const categoriasExistentes = Array.from(
     new Set([
       ...categoriasLista.filter((c) => !c.padre).map((c) => c.nombre),
@@ -78,6 +99,8 @@ export default function StockContainer({ supabase }) {
     setUbicacion('');
     setPrecioCosto(0);
     setPrecioVenta(0);
+    setPrecioUsd(0);
+    setMoneda('ARS');
     setStockActual(0);
     setStockMinimo(0);
     setMensajeProducto('');
@@ -94,6 +117,8 @@ export default function StockContainer({ supabase }) {
     setUbicacion(p.ubicacion || '');
     setPrecioCosto(p.precio_costo || 0);
     setPrecioVenta(p.precio_venta || 0);
+    setPrecioUsd(p.precio_usd || 0);
+    setMoneda(p.moneda || 'ARS');
     setStockActual(p.stock_actual || 0);
     setStockMinimo(p.stock_minimo || 0);
     setMensajeProducto('');
@@ -109,6 +134,14 @@ export default function StockContainer({ supabase }) {
     e.preventDefault();
     setMensajeProducto('');
 
+    const valUsd = parseFloat(precioUsd) || 0;
+    let valVenta = parseFloat(precioVenta) || 0;
+
+    // Si la moneda es USD, calcula de manera automática el equivalente de referencia en ARS según el dólar BNA
+    if (moneda === 'USD') {
+      valVenta = valUsd * cotizacionBna;
+    }
+
     const payload = {
       sku,
       descripcion,
@@ -117,7 +150,9 @@ export default function StockContainer({ supabase }) {
       marca,
       ubicacion,
       precio_costo: parseFloat(precioCosto) || 0,
-      precio_venta: parseFloat(precioVenta) || 0,
+      precio_venta: valVenta,
+      precio_usd: valUsd,
+      moneda,
       stock_actual: parseInt(stockActual) || 0,
       stock_minimo: parseInt(stockMinimo) || 0,
     };
@@ -147,18 +182,25 @@ export default function StockContainer({ supabase }) {
 
   return (
     <div>
-      {/* ENCABEZADO RESALTADO EN TONO OSCURO */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem', flexWrap: 'wrap', gap: '1rem' }}>
         <div>
           <h2 style={{ color: '#2b2927', margin: 0, fontSize: '1.35rem', fontWeight: '800' }}>
             Catálogo de Inventario y Stock
           </h2>
           <span style={{ fontSize: '0.85rem', color: '#78716c' }}>
-            Control de repuestos, precios y niveles de stock
+            Control bimonetario de repuestos, precios y cotización del dólar en vivo
           </span>
         </div>
 
-        <div style={{ display: 'flex', gap: '0.5rem' }}>
+        <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center' }}>
+          {/* Cotizador BNA Venta en Vivo */}
+          <div style={{ backgroundColor: '#f0f9ff', border: '1px solid #bae6fd', padding: '0.4rem 0.8rem', borderRadius: '8px', fontSize: '0.8rem', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+            <span style={{ color: '#0369a1', fontWeight: 'bold' }}>💵 Dólar BNA Venta:</span>
+            <span style={{ color: '#0284c7', fontWeight: '900', fontSize: '0.95rem' }}>
+              {cargandoDolar ? 'Cargando...' : `$ ${cotizacionBna.toLocaleString('es-AR', { minimumFractionDigits: 2 })}`}
+            </span>
+          </div>
+
           <button 
             onClick={() => setMostrarModalCategorias(true)}
             style={{ background: '#ebe6dc', color: '#44403c', border: '1px solid #dcd5c9', padding: '0.55rem 1rem', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold', fontSize: '0.85rem' }}
@@ -195,6 +237,9 @@ export default function StockContainer({ supabase }) {
           ubicacion={ubicacion} setUbicacion={setUbicacion}
           precioCosto={precioCosto} setPrecioCosto={setPrecioCosto}
           precioVenta={precioVenta} setPrecioVenta={setPrecioVenta}
+          precioUsd={precioUsd} setPrecioUsd={setPrecioUsd}
+          moneda={moneda} setMoneda={setMoneda}
+          cotizacionBna={cotizacionBna}
           stockActual={stockActual} setStockActual={setStockActual}
           stockMinimo={stockMinimo} setStockMinimo={setStockMinimo}
           categoriasExistentes={categoriasExistentes}
@@ -207,6 +252,7 @@ export default function StockContainer({ supabase }) {
 
       <TablaStock 
         productos={productos} 
+        cotizacionBna={cotizacionBna}
         onPrepararEdicion={prepararEdicionProducto} 
         onBorrarProducto={borrarProducto} 
       />
