@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 
-export default function TablaStock({ productos, onPrepararEdicion, onBorrarProducto }) {
+export default function TablaStock({ productos, cotizacionBna = 1200, onPrepararEdicion, onBorrarProducto }) {
   const [busqueda, setBusqueda] = useState('');
   const [catFiltro, setCatFiltro] = useState('');
 
@@ -53,7 +53,8 @@ export default function TablaStock({ productos, onPrepararEdicion, onBorrarProdu
               <th style={{ padding: '0.75rem 1rem' }}>Descripción</th>
               <th style={{ padding: '0.75rem 1rem' }}>Categoría / Sub</th>
               <th style={{ padding: '0.75rem 1rem' }}>Marca</th>
-              <th style={{ padding: '0.75rem 1rem', textAlign: 'right' }}>P. Venta</th>
+              <th style={{ padding: '0.75rem 1rem', textAlign: 'right' }}>P. Venta USD</th>
+              <th style={{ padding: '0.75rem 1rem', textAlign: 'right' }}>P. Venta ARS (BNA)</th>
               <th style={{ padding: '0.75rem 1rem', textAlign: 'center' }}>Stock</th>
               <th style={{ padding: '0.75rem 1rem', textAlign: 'center' }}>Acciones</th>
             </tr>
@@ -61,13 +62,16 @@ export default function TablaStock({ productos, onPrepararEdicion, onBorrarProdu
           <tbody>
             {productosFiltrados.length === 0 ? (
               <tr>
-                <td colSpan="7" style={{ textAlign: 'center', padding: '2rem', color: '#94a3b8' }}>
+                <td colSpan="8" style={{ textAlign: 'center', padding: '2rem', color: '#94a3b8' }}>
                   No se encontraron productos registrados.
                 </td>
               </tr>
             ) : (
               productosFiltrados.map((p) => {
                 const bajoStock = p.stock_actual <= p.stock_minimo;
+                const esUsd = p.moneda === 'USD';
+                const precioUsdVal = parseFloat(p.precio_usd || 0);
+                const precioArsCalculado = esUsd ? precioUsdVal * cotizacionBna : parseFloat(p.precio_venta || 0);
 
                 return (
                   <tr key={p.id} style={{ borderBottom: '1px solid #f1f5f9', transition: 'background 0.15s' }}>
@@ -80,9 +84,17 @@ export default function TablaStock({ productos, onPrepararEdicion, onBorrarProdu
                       {p.subcategoria && <span style={{ marginLeft: '0.4rem', color: '#64748b', fontSize: '0.75rem' }}>/ {p.subcategoria}</span>}
                     </td>
                     <td style={{ padding: '0.75rem 1rem', color: '#475569' }}>{p.marca || '-'}</td>
-                    <td style={{ padding: '0.75rem 1rem', textAlign: 'right', fontWeight: 'bold', color: '#15803d' }}>
-                      ${Number(p.precio_venta || 0).toLocaleString('es-AR', { minimumFractionDigits: 2 })}
+                    
+                    {/* MONTO USD */}
+                    <td style={{ padding: '0.75rem 1rem', textAlign: 'right', fontWeight: 'bold', color: esUsd ? '#0284c7' : '#94a3b8' }}>
+                      {esUsd ? `USD ${precioUsdVal.toLocaleString('es-AR', { minimumFractionDigits: 2 })}` : '-'}
                     </td>
+
+                    {/* MONTO ARS CALCULADO */}
+                    <td style={{ padding: '0.75rem 1rem', textAlign: 'right', fontWeight: 'bold', color: '#15803d' }}>
+                      ${precioArsCalculado.toLocaleString('es-AR', { minimumFractionDigits: 2 })}
+                    </td>
+
                     <td style={{ padding: '0.75rem 1rem', textAlign: 'center' }}>
                       <span style={{
                         padding: '0.25rem 0.6rem',
