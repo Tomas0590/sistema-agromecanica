@@ -37,6 +37,17 @@ export default function CuentasCorrientesContainer({ supabase }) {
     cargarComprobantes();
   }, []);
 
+  // Convierte YYYY-MM-DD a DD-MM-AAAA sin desfasajes de zona horaria
+  const formatearFechaARG = (fechaStr) => {
+    if (!fechaStr) return '';
+    const limpia = String(fechaStr).split('T')[0];
+    const partes = limpia.split('-');
+    if (partes.length === 3) {
+      return `${partes[2]}-${partes[1]}-${partes[0]}`;
+    }
+    return fechaStr;
+  };
+
   // Regla de negocio: toda factura/ND impaga con más de 30 días desde emisión se considera vencida
   const evaluarEstadoComprobante = (comp) => {
     const esDeuda = ['FACTURA_A', 'FACTURA_B', 'FACTURA_C', 'NOTA_DEBITO'].includes(comp.tipo);
@@ -55,7 +66,13 @@ export default function CuentasCorrientesContainer({ supabase }) {
       fechaLimite.setDate(fechaLimite.getDate() + 30);
     }
 
-    const fechaVencStr = fechaLimite ? fechaLimite.toISOString().split('T')[0] : '-';
+    let fechaVencStr = '-';
+    if (fechaLimite && !isNaN(fechaLimite.getTime())) {
+      const dd = String(fechaLimite.getDate()).padStart(2, '0');
+      const mm = String(fechaLimite.getMonth() + 1).padStart(2, '0');
+      const yyyy = fechaLimite.getFullYear();
+      fechaVencStr = `${dd}-${mm}-${yyyy}`;
+    }
 
     if (saldoPend <= 0) {
       return { esDeuda: true, cancelada: true, vencida: false, diasAtraso: 0, fechaVencStr, saldoPend: 0 };
@@ -116,7 +133,6 @@ export default function CuentasCorrientesContainer({ supabase }) {
     }
   };
 
-  // Alternar orden en tabla de Saldos (números/fechas arrancan descendente, texto ascendente)
   const toggleOrdenSaldos = (columna) => {
     setOrdenSaldos((prev) => {
       if (prev.columna === columna) {
@@ -127,7 +143,6 @@ export default function CuentasCorrientesContainer({ supabase }) {
     });
   };
 
-  // Alternar orden en tabla de Comprobantes
   const toggleOrdenComps = (columna) => {
     setOrdenComps((prev) => {
       if (prev.columna === columna) {
@@ -153,7 +168,7 @@ export default function CuentasCorrientesContainer({ supabase }) {
       .filter((item) => item.estado.vencida)
       .sort((a, b) => {
         if (b.estado.diasAtraso !== a.estado.diasAtraso) {
-          return b.estado.diasAtraso - a.estado.diasAtraso; // Más vencido primero
+          return b.estado.diasAtraso - a.estado.diasAtraso;
         }
         return b.estado.saldoPend - a.estado.saldoPend;
       });
@@ -164,7 +179,8 @@ export default function CuentasCorrientesContainer({ supabase }) {
     }
 
     const totalVencido = listaVencidas.reduce((acc, item) => acc + item.estado.saldoPend, 0);
-    const fechaHoy = new Date().toLocaleDateString('es-AR');
+    const hoyObj = new Date();
+    const fechaHoy = `${String(hoyObj.getDate()).padStart(2, '0')}-${String(hoyObj.getMonth() + 1).padStart(2, '0')}-${hoyObj.getFullYear()}`;
 
     const filasHTML = listaVencidas
       .map((item, idx) => {
@@ -177,7 +193,7 @@ export default function CuentasCorrientesContainer({ supabase }) {
           <tr>
             <td style="text-align:center;">${idx + 1}</td>
             <td style="text-align:center; font-weight:bold; color:#dc2626;">${item.estado.diasAtraso} d</td>
-            <td style="white-space:nowrap;">${item.fecha_emision || '-'}</td>
+            <td style="white-space:nowrap;">${formatearFechaARG(item.fecha_emision) || '-'}</td>
             <td style="white-space:nowrap;">${item.estado.fechaVencStr}</td>
             <td style="font-weight:bold;">${clienteNombre}</td>
             <td style="white-space:nowrap;">${cuit}</td>
@@ -240,8 +256,8 @@ export default function CuentasCorrientesContainer({ supabase }) {
             <tr>
               <th style="text-align:center; width:32px;">#</th>
               <th style="text-align:center; width:62px;">Atraso</th>
-              <th style="width:78px;">Emisión</th>
-              <th style="width:78px;">Vencim.</th>
+              <th style="width:82px;">Emisión</th>
+              <th style="width:82px;">Vencim.</th>
               <th>Cliente / Razón Social</th>
               <th style="width:95px;">CUIT</th>
               <th style="width:115px;">Comprobante</th>
@@ -618,7 +634,7 @@ export default function CuentasCorrientesContainer({ supabase }) {
                         $ {vencido.toLocaleString('es-AR', { minimumFractionDigits: 2 })}
                       </td>
                       <td style={{ padding: '0.85rem 1rem', textAlign: 'center', color: '#78716c', fontSize: '0.8rem' }}>
-                        {cliente.fecha_ultimo_movimiento || 'Sin movimientos'}
+                        {formatearFechaARG(cliente.fecha_ultimo_movimiento) || 'Sin movimientos'}
                       </td>
                       <td style={{ padding: '0.85rem 1rem', textAlign: 'right' }}>
                         <button
@@ -826,7 +842,7 @@ export default function CuentasCorrientesContainer({ supabase }) {
                         onMouseEnter={(e) => e.currentTarget.style.backgroundColor = estado.vencida ? '#fef2f2' : '#fdfbf7'}
                         onMouseLeave={(e) => e.currentTarget.style.backgroundColor = estado.vencida ? '#fffafa' : 'transparent'}
                       >
-                        <td style={{ padding: '0.75rem', whiteSpace: 'nowrap' }}>{comp.fecha_emision}</td>
+                        <td style={{ padding: '0.75rem', whiteSpace: 'nowrap' }}>{formatearFechaARG(comp.fecha_emision)}</td>
                         <td style={{ padding: '0.75rem', fontWeight: 'bold' }}>
                           {formatearTipo(comp.tipo)} {comp.numero ? `#${comp.numero}` : ''}
                         </td>
