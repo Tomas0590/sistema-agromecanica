@@ -8,7 +8,7 @@ export default function ModalResumenCliente({ mostrar, onClose, cliente, supabas
   const [movimientos, setMovimientos] = useState([]);
   const [cargando, setCargando] = useState(true);
   const [soloVencidas, setSoloVencidas] = useState(false);
-  
+
   // Estado para la edición de un comprobante
   const [editandoId, setEditandoId] = useState(null);
   const [editForm, setEditForm] = useState({ numero: '', fecha_emision: '', monto: '', observaciones: '' });
@@ -26,6 +26,17 @@ export default function ModalResumenCliente({ mostrar, onClose, cliente, supabas
   }, [mostrar, cliente]);
 
   if (!mostrar || !mounted || !cliente) return null;
+
+  // Convierte YYYY-MM-DD a DD-MM-AAAA sin desfasajes de zona horaria
+  const formatearFechaARG = (fechaStr) => {
+    if (!fechaStr) return '';
+    const limpia = String(fechaStr).split('T')[0];
+    const partes = limpia.split('-');
+    if (partes.length === 3) {
+      return `${partes[2]}-${partes[1]}-${partes[0]}`;
+    }
+    return fechaStr;
+  };
 
   // Evalúa si un comprobante de deuda tiene más de 30 días desde emisión y sigue impago
   const evaluarEstadoMovimiento = (m) => {
@@ -45,9 +56,13 @@ export default function ModalResumenCliente({ mostrar, onClose, cliente, supabas
       fechaLimite.setDate(fechaLimite.getDate() + 30);
     }
 
-    const fechaVencStr = fechaLimite
-      ? fechaLimite.toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' })
-      : null;
+    let fechaVencStr = null;
+    if (fechaLimite && !isNaN(fechaLimite.getTime())) {
+      const dd = String(fechaLimite.getDate()).padStart(2, '0');
+      const mm = String(fechaLimite.getMonth() + 1).padStart(2, '0');
+      const yyyy = fechaLimite.getFullYear();
+      fechaVencStr = `${dd}-${mm}-${yyyy}`;
+    }
 
     if (saldoPend <= 0) {
       return { esDeuda: true, cancelada: true, vencida: false, diasAtraso: 0, fechaVencStr, saldoPend: 0 };
@@ -188,8 +203,8 @@ export default function ModalResumenCliente({ mostrar, onClose, cliente, supabas
     window.print();
   };
 
-  const saldoFinal = movimientos.length > 0 
-    ? movimientos[movimientos.length - 1].saldoAcumulado 
+  const saldoFinal = movimientos.length > 0
+    ? movimientos[movimientos.length - 1].saldoAcumulado
     : parseFloat(cliente.saldo_total || 0);
 
   const movimientosVencidos = movimientos.filter((m) => m.estado?.vencida);
@@ -197,6 +212,9 @@ export default function ModalResumenCliente({ mostrar, onClose, cliente, supabas
   const totalAVencerCliente = Math.max(0, saldoFinal - totalVencidoCliente);
 
   const movimientosVisibles = soloVencidas ? movimientosVencidos : movimientos;
+
+  const hoyObj = new Date();
+  const fechaEmisionResumen = `${String(hoyObj.getDate()).padStart(2, '0')}-${String(hoyObj.getMonth() + 1).padStart(2, '0')}-${hoyObj.getFullYear()}`;
 
   const modalUI = (
     <div
@@ -292,7 +310,7 @@ export default function ModalResumenCliente({ mostrar, onClose, cliente, supabas
 
           <div style={{ textAlign: 'right' }}>
             <h3 style={{ margin: 0, color: '#15803d', fontSize: '1.1rem', fontWeight: '800' }}>ESTADO DE CUENTA</h3>
-            <span style={{ fontSize: '0.8rem', color: '#78716c' }}>Fecha de Emisión: {new Date().toLocaleDateString('es-AR')}</span>
+            <span style={{ fontSize: '0.8rem', color: '#78716c' }}>Fecha de Emisión: {fechaEmisionResumen}</span>
           </div>
         </div>
 
@@ -359,9 +377,9 @@ export default function ModalResumenCliente({ mostrar, onClose, cliente, supabas
           <table style={{ width: '100%', tableLayout: 'fixed', borderCollapse: 'collapse', fontSize: '0.8rem', textAlign: 'left' }}>
             <thead>
               <tr style={{ backgroundColor: '#eeeae1', color: '#44403c', borderBottom: '2px solid #dcd5c9' }}>
-                <th style={{ width: '11%', padding: '0.6rem 0.4rem', whiteSpace: 'nowrap' }}>Emisión</th>
+                <th style={{ width: '12%', padding: '0.6rem 0.4rem', whiteSpace: 'nowrap' }}>Emisión</th>
                 <th style={{ width: '19%', padding: '0.6rem 0.4rem' }}>Comprobante</th>
-                <th style={{ width: '24%', padding: '0.6rem 0.4rem' }}>Estado / Detalle</th>
+                <th style={{ width: '23%', padding: '0.6rem 0.4rem' }}>Estado / Detalle</th>
                 <th style={{ width: '13%', padding: '0.6rem 0.4rem', textAlign: 'right', whiteSpace: 'nowrap' }}>Debe (+)</th>
                 <th style={{ width: '13%', padding: '0.6rem 0.4rem', textAlign: 'right', whiteSpace: 'nowrap' }}>Haber (-)</th>
                 <th style={{ width: '13%', padding: '0.6rem 0.4rem', textAlign: 'right', whiteSpace: 'nowrap' }}>Saldo</th>
@@ -456,7 +474,7 @@ export default function ModalResumenCliente({ mostrar, onClose, cliente, supabas
                         backgroundColor: est.vencida ? '#fff5f5' : 'transparent'
                       }}
                     >
-                      <td style={{ padding: '0.6rem 0.4rem', whiteSpace: 'nowrap' }}>{m.fecha_emision}</td>
+                      <td style={{ padding: '0.6rem 0.4rem', whiteSpace: 'nowrap' }}>{formatearFechaARG(m.fecha_emision)}</td>
                       <td style={{ padding: '0.6rem 0.4rem', fontWeight: 'bold', wordBreak: 'break-word', color: est.vencida ? '#991b1b' : '#1c1917' }}>
                         {nombreComprobante} {m.numero ? `#${m.numero}` : ''}
                       </td>
@@ -482,7 +500,7 @@ export default function ModalResumenCliente({ mostrar, onClose, cliente, supabas
                           {m.observaciones && <span>{m.observaciones}</span>}
                         </div>
                       </td>
-                      
+
                       <td style={{ padding: '0.6rem 0.4rem', textAlign: 'right', fontWeight: 'bold', color: est.vencida ? '#dc2626' : m.debe > 0 ? '#2b2927' : '#a8a29e', whiteSpace: 'nowrap' }}>
                         {m.debe > 0 ? `$\u00A0${m.debe.toLocaleString('es-AR', { minimumFractionDigits: 2 })}` : '-'}
                       </td>
@@ -531,9 +549,9 @@ export default function ModalResumenCliente({ mostrar, onClose, cliente, supabas
           <button onClick={onClose} style={{ padding: '0.55rem 1.1rem', borderRadius: '6px', border: '1px solid #dcd5c9', background: '#eeeae1', cursor: 'pointer', fontWeight: 'bold' }}>
             Cerrar
           </button>
-          
-          <button 
-            onClick={handleImprimir} 
+
+          <button
+            onClick={handleImprimir}
             style={{ padding: '0.55rem 1.25rem', borderRadius: '6px', border: 'none', background: '#0284c7', color: '#fff', fontWeight: 'bold', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.4rem' }}
           >
             🖨️ Descargar / Imprimir PDF
