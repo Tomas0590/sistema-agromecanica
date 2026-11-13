@@ -20,6 +20,7 @@ export default function ModalNuevoCliente({
   const [buscandoPadron, setBuscandoPadron] = useState(false);
   const [sitBcraLeida, setSitBcraLeida] = useState(null);
   const [errorBcra, setErrorBcra] = useState(false);
+  const [cuitDuplicado, setCuitDuplicado] = useState(null);
   const [mensajeForm, setMensajeForm] = useState('');
   const [guardando, setGuardando] = useState(false);
 
@@ -27,9 +28,10 @@ export default function ModalNuevoCliente({
 
   // LECTURA AUTOMÁTICA AL INGRESAR 11 DÍGITOS
   const handleCuitChange = async (e) => {
-    // Filtra todo lo que no sea número y limita a 11 dígitos
     const soloNumeros = e.target.value.replace(/\D/g, '').slice(0, 11);
     setCuitDni(soloNumeros);
+    setCuitDuplicado(null);
+    setMensajeForm('');
 
     if (soloNumeros.length < 11) {
       setSitBcraLeida(null);
@@ -43,6 +45,20 @@ export default function ModalNuevoCliente({
       setSitBcraLeida(null);
 
       try {
+        // 0. Verificar primero si el CUIT ya existe en la base de clientes
+        const { data: existentes } = await supabase
+          .from('clientes')
+          .select('id, razon_social')
+          .or(`cuit.eq.${soloNumeros},cuit_dni.eq.${soloNumeros}`)
+          .limit(1);
+
+        if (existentes && existentes.length > 0) {
+          setCuitDuplicado(existentes[0]);
+          setMensajeForm(`⚠️ Este CUIT ya está registrado a nombre de: ${existentes[0].razon_social}`);
+          setBuscandoPadron(false);
+          return;
+        }
+
         // 1. Consulta en paralelo a tus endpoints internos
         const [resCuit, resBcra] = await Promise.all([
           fetch(`/api/cuit?cuit=${soloNumeros}`).catch(() => null),
@@ -71,7 +87,6 @@ export default function ModalNuevoCliente({
           }
           setSitBcraLeida(peorSit);
         } else if (resBcra && resBcra.status === 404) {
-          // 404 en el BCRA significa que no tiene deudas bancarias registradas (Sit 1)
           setSitBcraLeida(1);
         } else {
           setErrorBcra(true);
@@ -95,8 +110,30 @@ export default function ModalNuevoCliente({
       return;
     }
 
-    setGuardando(true);
     const valorCuit = cuitDni.trim() || null;
+
+    if (cuitDuplicado) {
+      setMensajeForm(`⚠️ No se puede guardar: el CUIT pertenece a ${cuitDuplicado.razon_social}.`);
+      return;
+    }
+
+    setGuardando(true);
+
+    // Doble validación en base de datos antes de insertar (cubre también DNIs de 7/8 dígitos)
+    if (valorCuit) {
+      const { data: existentes } = await supabase
+        .from('clientes')
+        .select('id, razon_social')
+        .or(`cuit.eq.${valorCuit},cuit_dni.eq.${valorCuit}`)
+        .limit(1);
+
+      if (existentes && existentes.length > 0) {
+        setCuitDuplicado(existentes[0]);
+        setMensajeForm(`⚠️ Ya existe un cliente registrado con ese CUIT/DNI: ${existentes[0].razon_social}`);
+        setGuardando(false);
+        return;
+      }
+    }
 
     const payload = {
       razon_social: razonSocial.trim(),
@@ -121,7 +158,7 @@ export default function ModalNuevoCliente({
       }
 
       setCuitDni(''); setRazonSocial(''); setTelefono(''); setEmail('');
-      setDireccion(''); setObservaciones(''); setSitBcraLeida(null); setErrorBcra(false);
+      setDireccion(''); setObservaciones(''); setSitBcraLeida(null); setErrorBcra(false); setCuitDuplicado(null);
       if (typeof onClienteCreado === 'function') onClienteCreado();
       onClose();
     }
@@ -140,7 +177,7 @@ export default function ModalNuevoCliente({
         </div>
 
         {mensajeForm && (
-          <div style={{ backgroundColor: '#fef2f2', border: '1px solid #fecaca', color: '#dc2626', padding: '0.6rem', borderRadius: '6px', marginBottom: '1rem', fontSize: '0.85rem' }}>
+          <div style={{ backgroundColor: '#fef2f2', border: '1px solid #fecaca', color: '#dc2626', padding: '0.6rem', borderRadius: '6px', marginBottom: '1rem', fontSize: '0.85rem', fontWeight: 'bold' }}>
             {mensajeForm}
           </div>
         )}
@@ -159,7 +196,15 @@ export default function ModalNuevoCliente({
                 placeholder="Ej: 20330303744 (Solo 11 números)"
                 value={cuitDni}
                 onChange={handleCuitChange}
-                style={{ width: '100%', padding: '0.65rem', borderRadius: '6px', border: '1px solid #dcd5c9', background: '#fff', boxSizing: 'border-box', fontFamily: 'monospace' }}
+                style={{
+                  width: '100%',
+                  padding: '0.65rem',
+                  borderRadius: '6px',
+                  border: cuitDuplicado ? '1px solid #dc2626' : '1px solid #dcd5c9',
+                  background: cuitDuplicado ? '#fef2f2' : '#fff',
+                  boxSizing: 'border-box',
+                  fontFamily: 'monospace'
+                }}
               />
               {buscandoPadron && (
                 <span style={{ position: 'absolute', right: '10px', top: '50%', transform: 'translateY(-50%)', fontSize: '0.75rem', color: '#0284c7', fontWeight: 'bold' }}>
@@ -169,7 +214,7 @@ export default function ModalNuevoCliente({
             </div>
           </div>
 
-          {cuitDni.length === 11 && (
+          {cuitDni.length === 11 && !cuitDuplicado && (
             <div style={{ backgroundColor: '#f5f2eb', padding: '0.65rem 0.85rem', borderRadius: '6px', border: '1px solid #e5e0d8', fontSize: '0.8rem' }}>
               {sitBcraLeida !== null ? (
                 <span style={{ color: sitBcraLeida === 1 ? '#166534' : '#dc2626', fontWeight: 'bold' }}>
@@ -265,7 +310,19 @@ export default function ModalNuevoCliente({
             <button type="button" onClick={onClose} style={{ padding: '0.55rem 1.1rem', borderRadius: '6px', border: '1px solid #dcd5c9', background: '#eeeae1', cursor: 'pointer', fontWeight: 'bold' }}>
               Cancelar
             </button>
-            <button type="submit" disabled={guardando} style={{ padding: '0.55rem 1.25rem', borderRadius: '6px', border: 'none', background: '#15803d', color: '#fff', fontWeight: 'bold', cursor: 'pointer' }}>
+            <button
+              type="submit"
+              disabled={guardando || Boolean(cuitDuplicado)}
+              style={{
+                padding: '0.55rem 1.25rem',
+                borderRadius: '6px',
+                border: 'none',
+                background: cuitDuplicado ? '#a8a29e' : '#15803d',
+                color: '#fff',
+                fontWeight: 'bold',
+                cursor: cuitDuplicado ? 'not-allowed' : 'pointer'
+              }}
+            >
               {guardando ? '💾 Guardando...' : '💾 Guardar Cliente'}
             </button>
           </div>
