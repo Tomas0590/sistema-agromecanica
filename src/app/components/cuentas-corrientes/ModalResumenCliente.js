@@ -200,6 +200,7 @@ export default function ModalResumenCliente({ mostrar, onClose, cliente, supabas
 
   const modalUI = (
     <div
+      className="modal-resumen-portal"
       style={{
         position: 'fixed',
         inset: 0,
@@ -232,16 +233,37 @@ export default function ModalResumenCliente({ mostrar, onClose, cliente, supabas
       >
         <style>{`
           @media print {
+            @page {
+              size: A4 portrait;
+              margin: 12mm;
+            }
             * {
               -webkit-print-color-adjust: exact !important;
               print-color-adjust: exact !important;
             }
-            body * { visibility: hidden; }
-            #area-impresion-resumen, #area-impresion-resumen * { visibility: visible; }
+            html, body {
+              height: auto !important;
+              overflow: visible !important;
+              margin: 0 !important;
+              padding: 0 !important;
+              background: #ffffff !important;
+            }
+            body > *:not(.modal-resumen-portal) {
+              display: none !important;
+            }
+            .modal-resumen-portal {
+              position: static !important;
+              inset: auto !important;
+              background: transparent !important;
+              backdrop-filter: none !important;
+              width: 100% !important;
+              height: auto !important;
+              display: block !important;
+            }
             #area-impresion-resumen {
-              position: absolute !important;
-              left: 0 !important;
-              top: 0 !important;
+              position: static !important;
+              top: auto !important;
+              left: auto !important;
               transform: none !important;
               width: 100% !important;
               max-width: 100% !important;
@@ -250,8 +272,11 @@ export default function ModalResumenCliente({ mostrar, onClose, cliente, supabas
               box-shadow: none !important;
               border: none !important;
               padding: 0 !important;
+              margin: 0 !important;
             }
-            .no-imprimir { display: none !important; }
+            .no-imprimir {
+              display: none !important;
+            }
           }
         `}</style>
 
