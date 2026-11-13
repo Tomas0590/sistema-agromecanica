@@ -10,13 +10,17 @@ export default function CuentasCorrientesContainer({ supabase }) {
   const [saldosClientes, setSaldosClientes] = useState([]);
   const [comprobantes, setComprobantes] = useState([]);
   const [cargando, setCargando] = useState(true);
-  
+
   // Filtros
   const [busqueda, setBusqueda] = useState('');
   const [soloDeudores, setSoloDeudores] = useState(false);
   const [soloVencidosClientes, setSoloVencidosClientes] = useState(false);
   const [filtroTipoComp, setFiltroTipoComp] = useState('TODOS');
   const [soloFacturasVencidas, setSoloFacturasVencidas] = useState(false);
+
+  // Ordenamiento de columnas
+  const [ordenSaldos, setOrdenSaldos] = useState({ columna: 'razon_social', asc: true });
+  const [ordenComps, setOrdenComps] = useState({ columna: 'fecha_emision', asc: false });
 
   // Modales
   const [mostrarModalNuevo, setMostrarModalNuevo] = useState(false);
@@ -36,16 +40,12 @@ export default function CuentasCorrientesContainer({ supabase }) {
   // Regla de negocio: toda factura/ND impaga con más de 30 días desde emisión se considera vencida
   const evaluarEstadoComprobante = (comp) => {
     const esDeuda = ['FACTURA_A', 'FACTURA_B', 'FACTURA_C', 'NOTA_DEBITO'].includes(comp.tipo);
-    if (!esDeuda) return { esDeuda: false, cancelada: false, vencida: false, diasAtraso: 0 };
+    if (!esDeuda) return { esDeuda: false, cancelada: false, vencida: false, diasAtraso: 0, fechaVencStr: '-', saldoPend: 0 };
 
     const saldoPend =
       comp.saldo_pendiente === null || comp.saldo_pendiente === undefined
         ? parseFloat(comp.debe || 0)
         : parseFloat(comp.saldo_pendiente || 0);
-
-    if (saldoPend <= 0) {
-      return { esDeuda: true, cancelada: true, vencida: false, diasAtraso: 0 };
-    }
 
     let fechaLimite;
     if (comp.fecha_vencimiento) {
@@ -53,8 +53,16 @@ export default function CuentasCorrientesContainer({ supabase }) {
     } else if (comp.fecha_emision) {
       fechaLimite = new Date(`${comp.fecha_emision}T00:00:00`);
       fechaLimite.setDate(fechaLimite.getDate() + 30);
-    } else {
-      return { esDeuda: true, cancelada: false, vencida: false, diasAtraso: 0 };
+    }
+
+    const fechaVencStr = fechaLimite ? fechaLimite.toISOString().split('T')[0] : '-';
+
+    if (saldoPend <= 0) {
+      return { esDeuda: true, cancelada: true, vencida: false, diasAtraso: 0, fechaVencStr, saldoPend: 0 };
+    }
+
+    if (!fechaLimite) {
+      return { esDeuda: true, cancelada: false, vencida: false, diasAtraso: 0, fechaVencStr: '-', saldoPend };
     }
 
     const hoy = new Date();
@@ -65,7 +73,9 @@ export default function CuentasCorrientesContainer({ supabase }) {
       esDeuda: true,
       cancelada: false,
       vencida: diffDias > 0,
-      diasAtraso: diffDias > 0 ? diffDias : 0
+      diasAtraso: diffDias > 0 ? diffDias : 0,
+      fechaVencStr,
+      saldoPend
     };
   };
 
@@ -106,6 +116,159 @@ export default function CuentasCorrientesContainer({ supabase }) {
     }
   };
 
+  // Alternar orden en tabla de Saldos (números/fechas arrancan descendente, texto ascendente)
+  const toggleOrdenSaldos = (columna) => {
+    setOrdenSaldos((prev) => {
+      if (prev.columna === columna) {
+        return { columna, asc: !prev.asc };
+      }
+      const esTexto = columna === 'razon_social';
+      return { columna, asc: esTexto };
+    });
+  };
+
+  // Alternar orden en tabla de Comprobantes
+  const toggleOrdenComps = (columna) => {
+    setOrdenComps((prev) => {
+      if (prev.columna === columna) {
+        return { columna, asc: !prev.asc };
+      }
+      const esTexto = columna === 'razon_social' || columna === 'tipo';
+      return { columna, asc: esTexto };
+    });
+  };
+
+  const indicadorOrden = (estadoOrden, columna) => {
+    if (estadoOrden.columna !== columna) return ' ↕';
+    return estadoOrden.asc ? ' ▲' : ' ▼';
+  };
+
+  // Exportar PDF con listado de facturas vencidas ordenadas de lo más vencido a lo menos vencido
+  const handleExportarVencidasPDF = () => {
+    const listaVencidas = comprobantes
+      .map((comp) => ({
+        ...comp,
+        estado: evaluarEstadoComprobante(comp)
+      }))
+      .filter((item) => item.estado.vencida)
+      .sort((a, b) => {
+        if (b.estado.diasAtraso !== a.estado.diasAtraso) {
+          return b.estado.diasAtraso - a.estado.diasAtraso; // Más vencido primero
+        }
+        return b.estado.saldoPend - a.estado.saldoPend;
+      });
+
+    if (listaVencidas.length === 0) {
+      alert('No hay facturas vencidas (+30 días) para exportar.');
+      return;
+    }
+
+    const totalVencido = listaVencidas.reduce((acc, item) => acc + item.estado.saldoPend, 0);
+    const fechaHoy = new Date().toLocaleDateString('es-AR');
+
+    const filasHTML = listaVencidas
+      .map((item, idx) => {
+        const clienteNombre = item.clientes?.razon_social || 'SIN NOMBRE';
+        const cuit = item.clientes?.cuit_dni || '-';
+        const comprobanteTexto = `${formatearTipo(item.tipo)} ${item.numero ? `#${item.numero}` : ''}`;
+        const montoStr = item.estado.saldoPend.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+        return `
+          <tr>
+            <td style="text-align:center;">${idx + 1}</td>
+            <td style="text-align:center; font-weight:bold; color:#dc2626;">${item.estado.diasAtraso} d</td>
+            <td style="white-space:nowrap;">${item.fecha_emision || '-'}</td>
+            <td style="white-space:nowrap;">${item.estado.fechaVencStr}</td>
+            <td style="font-weight:bold;">${clienteNombre}</td>
+            <td style="white-space:nowrap;">${cuit}</td>
+            <td style="white-space:nowrap;">${comprobanteTexto}</td>
+            <td style="text-align:right; font-weight:bold; white-space:nowrap;">$ ${montoStr}</td>
+          </tr>
+        `;
+      })
+      .join('');
+
+    const ventanaPrint = window.open('', '_blank', 'width=1024,height=768');
+    if (!ventanaPrint) {
+      alert('El navegador bloqueó la ventana emergente. Habilitá las ventanas emergentes para generar el PDF.');
+      return;
+    }
+
+    ventanaPrint.document.write(`
+      <!DOCTYPE html>
+      <html lang="es">
+      <head>
+        <meta charset="UTF-8" />
+        <title>Facturas Vencidas - Agromecanica (${fechaHoy})</title>
+        <style>
+          * { box-sizing: border-box; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+          body { font-family: Arial, Helvetica, sans-serif; color: #1c1917; margin: 24px; font-size: 12px; }
+          .header { display: flex; justify-content: space-between; align-items: flex-end; border-bottom: 2px solid #dc2626; padding-bottom: 10px; margin-bottom: 16px; }
+          .header h1 { margin: 0; font-size: 20px; color: #1c1917; }
+          .header .sub { font-size: 11px; color: #57534e; }
+          .resumen { display: flex; justify-content: space-between; background: #fef2f2; border: 1px solid #fecaca; border-radius: 6px; padding: 10px 14px; margin-bottom: 16px; }
+          .resumen div { font-size: 13px; }
+          table { width: 100%; border-collapse: collapse; font-size: 11px; }
+          th { background-color: #eeeae1; color: #2b2927; border: 1px solid #d6d3d1; padding: 7px 6px; text-align: left; font-weight: bold; }
+          td { border: 1px solid #e7e5e4; padding: 6px; vertical-align: middle; }
+          tr:nth-child(even) { background-color: #fafaf9; }
+          .footer { margin-top: 14px; font-size: 10px; color: #78716c; text-align: right; }
+          @media print {
+            body { margin: 10mm; }
+          }
+        </style>
+      </head>
+      <body>
+        <div class="header">
+          <div>
+            <h1>AGROMECANICA</h1>
+            <div class="sub">Reporte de Cartera Vencida (Ordenado de mayor a menor atraso · Condición: +30 días)</div>
+          </div>
+          <div style="text-align:right;">
+            <strong style="color:#dc2626; font-size:14px;">FACTURAS VENCIDAS</strong>
+            <div class="sub">Emisión del reporte: ${fechaHoy}</div>
+          </div>
+        </div>
+
+        <div class="resumen">
+          <div><strong>Cantidad de comprobantes vencidos:</strong> ${listaVencidas.length}</div>
+          <div><strong>Total Deuda Vencida:</strong> <span style="color:#dc2626; font-weight:900; font-size:15px;">$ ${totalVencido.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span></div>
+        </div>
+
+        <table>
+          <thead>
+            <tr>
+              <th style="text-align:center; width:32px;">#</th>
+              <th style="text-align:center; width:62px;">Atraso</th>
+              <th style="width:78px;">Emisión</th>
+              <th style="width:78px;">Vencim.</th>
+              <th>Cliente / Razón Social</th>
+              <th style="width:95px;">CUIT</th>
+              <th style="width:115px;">Comprobante</th>
+              <th style="text-align:right; width:115px;">Saldo Vencido</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${filasHTML}
+          </tbody>
+        </table>
+
+        <div class="footer">
+          Documento generado automáticamente por Sistema Agromecanica — ${fechaHoy}
+        </div>
+
+        <script>
+          window.onload = function() {
+            window.focus();
+            window.print();
+          };
+        </script>
+      </body>
+      </html>
+    `);
+    ventanaPrint.document.close();
+  };
+
   // Iniciar edición al clickear una fila
   const handleClicFilaComprobante = (comp) => {
     if (editandoCompId === comp.id) return;
@@ -125,7 +288,6 @@ export default function CuentasCorrientesContainer({ supabase }) {
     const esDebe = parseFloat(comp.debe || 0) > 0;
     const montoNum = parseFloat(editForm.monto) || 0;
 
-    // Recalcular fecha_vencimiento a +30 días si es comprobante de deuda
     let nuevaFechaVenc = comp.fecha_vencimiento;
     if (esDebe && editForm.fecha_emision) {
       const d = new Date(`${editForm.fecha_emision}T00:00:00`);
@@ -205,25 +367,74 @@ export default function CuentasCorrientesContainer({ supabase }) {
     }
   };
 
-  // Filtrados
-  const saldosFiltrados = saldosClientes.filter((c) => {
-    const matchTexto = 
-      (c.razon_social || '').toLowerCase().includes(busqueda.toLowerCase()) ||
-      (c.cuit_dni || '').includes(busqueda);
-    const matchDeuda = soloDeudores ? parseFloat(c.saldo_total || 0) > 0 : true;
-    const matchVencido = soloVencidosClientes ? parseFloat(c.saldo_vencido || 0) > 0 : true;
-    return matchTexto && matchDeuda && matchVencido;
-  });
+  // Filtrados y Ordenamientos
+  const saldosFiltrados = saldosClientes
+    .filter((c) => {
+      const matchTexto =
+        (c.razon_social || '').toLowerCase().includes(busqueda.toLowerCase()) ||
+        (c.cuit_dni || '').includes(busqueda);
+      const matchDeuda = soloDeudores ? parseFloat(c.saldo_total || 0) > 0 : true;
+      const matchVencido = soloVencidosClientes ? parseFloat(c.saldo_vencido || 0) > 0 : true;
+      return matchTexto && matchDeuda && matchVencido;
+    })
+    .sort((a, b) => {
+      const { columna, asc } = ordenSaldos;
+      let valA, valB;
 
-  const comprobantesFiltrados = comprobantes.filter((comp) => {
-    const matchTipo = filtroTipoComp === 'TODOS' ? true : comp.tipo === filtroTipoComp;
-    const matchTexto = 
-      (comp.clientes?.razon_social || '').toLowerCase().includes(busqueda.toLowerCase()) ||
-      (comp.numero || '').includes(busqueda) ||
-      (comp.observaciones || '').toLowerCase().includes(busqueda.toLowerCase());
-    const matchVencida = soloFacturasVencidas ? evaluarEstadoComprobante(comp).vencida : true;
-    return matchTipo && matchTexto && matchVencida;
-  });
+      if (columna === 'saldo_total') {
+        valA = parseFloat(a.saldo_total || 0);
+        valB = parseFloat(b.saldo_total || 0);
+      } else if (columna === 'saldo_vencido') {
+        valA = parseFloat(a.saldo_vencido || 0);
+        valB = parseFloat(b.saldo_vencido || 0);
+      } else if (columna === 'fecha_ultimo_movimiento') {
+        valA = a.fecha_ultimo_movimiento || '';
+        valB = b.fecha_ultimo_movimiento || '';
+      } else {
+        valA = (a.razon_social || '').toLowerCase();
+        valB = (b.razon_social || '').toLowerCase();
+      }
+
+      if (valA < valB) return asc ? -1 : 1;
+      if (valA > valB) return asc ? 1 : -1;
+      return 0;
+    });
+
+  const comprobantesFiltrados = comprobantes
+    .filter((comp) => {
+      const matchTipo = filtroTipoComp === 'TODOS' ? true : comp.tipo === filtroTipoComp;
+      const matchTexto =
+        (comp.clientes?.razon_social || '').toLowerCase().includes(busqueda.toLowerCase()) ||
+        (comp.numero || '').includes(busqueda) ||
+        (comp.observaciones || '').toLowerCase().includes(busqueda.toLowerCase());
+      const matchVencida = soloFacturasVencidas ? evaluarEstadoComprobante(comp).vencida : true;
+      return matchTipo && matchTexto && matchVencida;
+    })
+    .sort((a, b) => {
+      const { columna, asc } = ordenComps;
+      let valA, valB;
+
+      if (columna === 'debe') {
+        valA = parseFloat(a.debe || 0);
+        valB = parseFloat(b.debe || 0);
+      } else if (columna === 'haber') {
+        valA = parseFloat(a.haber || 0);
+        valB = parseFloat(b.haber || 0);
+      } else if (columna === 'razon_social') {
+        valA = (a.clientes?.razon_social || '').toLowerCase();
+        valB = (b.clientes?.razon_social || '').toLowerCase();
+      } else if (columna === 'tipo') {
+        valA = `${a.tipo || ''} ${a.numero || ''}`.toLowerCase();
+        valB = `${b.tipo || ''} ${b.numero || ''}`.toLowerCase();
+      } else {
+        valA = a.fecha_emision || '';
+        valB = b.fecha_emision || '';
+      }
+
+      if (valA < valB) return asc ? -1 : 1;
+      if (valA > valB) return asc ? 1 : -1;
+      return 0;
+    });
 
   const totalAdeudadoGeneral = saldosClientes.reduce((acc, c) => acc + parseFloat(c.saldo_total || 0), 0);
   const totalVencidoGeneral = saldosClientes.reduce((acc, c) => acc + parseFloat(c.saldo_vencido || 0), 0);
@@ -242,8 +453,15 @@ export default function CuentasCorrientesContainer({ supabase }) {
           </span>
         </div>
 
-        <div style={{ display: 'flex', gap: '0.5rem' }}>
-          <button 
+        <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+          <button
+            onClick={handleExportarVencidasPDF}
+            style={{ background: '#dc2626', color: '#fff', border: 'none', padding: '0.55rem 1rem', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold', fontSize: '0.85rem' }}
+          >
+            📄 Exportar Vencidas PDF ({cantFacturasVencidas})
+          </button>
+
+          <button
             onClick={() => setMostrarModalNuevo(true)}
             style={{ background: '#15803d', color: '#fff', border: 'none', padding: '0.55rem 1rem', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold', fontSize: '0.85rem' }}
           >
@@ -327,9 +545,9 @@ export default function CuentasCorrientesContainer({ supabase }) {
 
             <div style={{ display: 'flex', gap: '1.25rem', flexWrap: 'wrap' }}>
               <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.85rem', fontWeight: 'bold', color: '#44403c', cursor: 'pointer' }}>
-                <input 
-                  type="checkbox" 
-                  checked={soloDeudores} 
+                <input
+                  type="checkbox"
+                  checked={soloDeudores}
                   onChange={(e) => setSoloDeudores(e.target.checked)}
                   style={{ accentColor: '#15803d', width: '16px', height: '16px' }}
                 />
@@ -337,9 +555,9 @@ export default function CuentasCorrientesContainer({ supabase }) {
               </label>
 
               <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.85rem', fontWeight: 'bold', color: '#dc2626', cursor: 'pointer' }}>
-                <input 
-                  type="checkbox" 
-                  checked={soloVencidosClientes} 
+                <input
+                  type="checkbox"
+                  checked={soloVencidosClientes}
                   onChange={(e) => setSoloVencidosClientes(e.target.checked)}
                   style={{ accentColor: '#dc2626', width: '16px', height: '16px' }}
                 />
@@ -351,11 +569,35 @@ export default function CuentasCorrientesContainer({ supabase }) {
           <div style={{ overflowX: 'auto' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '0.875rem' }}>
               <thead>
-                <tr style={{ backgroundColor: '#eeeae1', color: '#44403c', borderBottom: '2px solid #dcd5c9' }}>
-                  <th style={{ padding: '0.75rem 1rem' }}>Cliente</th>
-                  <th style={{ padding: '0.75rem 1rem', textAlign: 'right' }}>Saldo Total</th>
-                  <th style={{ padding: '0.75rem 1rem', textAlign: 'right' }}>Deuda Vencida (+30d)</th>
-                  <th style={{ padding: '0.75rem 1rem', textAlign: 'center' }}>Últ. Movimiento</th>
+                <tr style={{ backgroundColor: '#eeeae1', color: '#44403c', borderBottom: '2px solid #dcd5c9', userSelect: 'none' }}>
+                  <th
+                    onClick={() => toggleOrdenSaldos('razon_social')}
+                    style={{ padding: '0.75rem 1rem', cursor: 'pointer' }}
+                    title="Ordenar por Cliente"
+                  >
+                    Cliente{indicadorOrden(ordenSaldos, 'razon_social')}
+                  </th>
+                  <th
+                    onClick={() => toggleOrdenSaldos('saldo_total')}
+                    style={{ padding: '0.75rem 1rem', textAlign: 'right', cursor: 'pointer' }}
+                    title="Ordenar por Saldo Total"
+                  >
+                    Saldo Total{indicadorOrden(ordenSaldos, 'saldo_total')}
+                  </th>
+                  <th
+                    onClick={() => toggleOrdenSaldos('saldo_vencido')}
+                    style={{ padding: '0.75rem 1rem', textAlign: 'right', cursor: 'pointer' }}
+                    title="Ordenar por Deuda Vencida"
+                  >
+                    Deuda Vencida (+30d){indicadorOrden(ordenSaldos, 'saldo_vencido')}
+                  </th>
+                  <th
+                    onClick={() => toggleOrdenSaldos('fecha_ultimo_movimiento')}
+                    style={{ padding: '0.75rem 1rem', textAlign: 'center', cursor: 'pointer' }}
+                    title="Ordenar por Último Movimiento"
+                  >
+                    Últ. Movimiento{indicadorOrden(ordenSaldos, 'fecha_ultimo_movimiento')}
+                  </th>
                   <th style={{ padding: '0.75rem 1rem', textAlign: 'right' }}>Acciones</th>
                 </tr>
               </thead>
@@ -458,13 +700,23 @@ export default function CuentasCorrientesContainer({ supabase }) {
           <div style={{ overflowX: 'auto' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '0.85rem' }}>
               <thead>
-                <tr style={{ backgroundColor: '#eeeae1', color: '#44403c', borderBottom: '2px solid #dcd5c9' }}>
-                  <th style={{ padding: '0.75rem' }}>Fecha</th>
-                  <th style={{ padding: '0.75rem' }}>Tipo / N° Comprobante</th>
-                  <th style={{ padding: '0.75rem' }}>Cliente</th>
+                <tr style={{ backgroundColor: '#eeeae1', color: '#44403c', borderBottom: '2px solid #dcd5c9', userSelect: 'none' }}>
+                  <th onClick={() => toggleOrdenComps('fecha_emision')} style={{ padding: '0.75rem', cursor: 'pointer' }}>
+                    Fecha{indicadorOrden(ordenComps, 'fecha_emision')}
+                  </th>
+                  <th onClick={() => toggleOrdenComps('tipo')} style={{ padding: '0.75rem', cursor: 'pointer' }}>
+                    Tipo / N° Comprobante{indicadorOrden(ordenComps, 'tipo')}
+                  </th>
+                  <th onClick={() => toggleOrdenComps('razon_social')} style={{ padding: '0.75rem', cursor: 'pointer' }}>
+                    Cliente{indicadorOrden(ordenComps, 'razon_social')}
+                  </th>
                   <th style={{ padding: '0.75rem' }}>Detalle / Estado</th>
-                  <th style={{ padding: '0.75rem', textAlign: 'right' }}>Debe (+)</th>
-                  <th style={{ padding: '0.75rem', textAlign: 'right' }}>Haber (-)</th>
+                  <th onClick={() => toggleOrdenComps('debe')} style={{ padding: '0.75rem', textAlign: 'right', cursor: 'pointer' }}>
+                    Debe (+){indicadorOrden(ordenComps, 'debe')}
+                  </th>
+                  <th onClick={() => toggleOrdenComps('haber')} style={{ padding: '0.75rem', textAlign: 'right', cursor: 'pointer' }}>
+                    Haber (-){indicadorOrden(ordenComps, 'haber')}
+                  </th>
                   <th style={{ padding: '0.75rem', textAlign: 'center' }}>Acciones</th>
                 </tr>
               </thead>
@@ -561,8 +813,8 @@ export default function CuentasCorrientesContainer({ supabase }) {
                     }
 
                     return (
-                      <tr 
-                        key={comp.id} 
+                      <tr
+                        key={comp.id}
                         onClick={() => handleClicFilaComprobante(comp)}
                         title="Hacé clic sobre esta fila para editar o eliminar el comprobante"
                         style={{
