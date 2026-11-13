@@ -14,7 +14,9 @@ export default function CuentasCorrientesContainer({ supabase }) {
   // Filtros
   const [busqueda, setBusqueda] = useState('');
   const [soloDeudores, setSoloDeudores] = useState(false);
+  const [soloVencidosClientes, setSoloVencidosClientes] = useState(false);
   const [filtroTipoComp, setFiltroTipoComp] = useState('TODOS');
+  const [soloFacturasVencidas, setSoloFacturasVencidas] = useState(false);
 
   // Modales
   const [mostrarModalNuevo, setMostrarModalNuevo] = useState(false);
@@ -30,6 +32,42 @@ export default function CuentasCorrientesContainer({ supabase }) {
     cargarSaldos();
     cargarComprobantes();
   }, []);
+
+  // Regla de negocio: toda factura/ND impaga con más de 30 días desde emisión se considera vencida
+  const evaluarEstadoComprobante = (comp) => {
+    const esDeuda = ['FACTURA_A', 'FACTURA_B', 'FACTURA_C', 'NOTA_DEBITO'].includes(comp.tipo);
+    if (!esDeuda) return { esDeuda: false, cancelada: false, vencida: false, diasAtraso: 0 };
+
+    const saldoPend =
+      comp.saldo_pendiente === null || comp.saldo_pendiente === undefined
+        ? parseFloat(comp.debe || 0)
+        : parseFloat(comp.saldo_pendiente || 0);
+
+    if (saldoPend <= 0) {
+      return { esDeuda: true, cancelada: true, vencida: false, diasAtraso: 0 };
+    }
+
+    let fechaLimite;
+    if (comp.fecha_vencimiento) {
+      fechaLimite = new Date(`${comp.fecha_vencimiento}T00:00:00`);
+    } else if (comp.fecha_emision) {
+      fechaLimite = new Date(`${comp.fecha_emision}T00:00:00`);
+      fechaLimite.setDate(fechaLimite.getDate() + 30);
+    } else {
+      return { esDeuda: true, cancelada: false, vencida: false, diasAtraso: 0 };
+    }
+
+    const hoy = new Date();
+    hoy.setHours(0, 0, 0, 0);
+
+    const diffDias = Math.floor((hoy - fechaLimite) / (1000 * 60 * 60 * 24));
+    return {
+      esDeuda: true,
+      cancelada: false,
+      vencida: diffDias > 0,
+      diasAtraso: diffDias > 0 ? diffDias : 0
+    };
+  };
 
   const cargarSaldos = async () => {
     try {
@@ -87,13 +125,23 @@ export default function CuentasCorrientesContainer({ supabase }) {
     const esDebe = parseFloat(comp.debe || 0) > 0;
     const montoNum = parseFloat(editForm.monto) || 0;
 
+    // Recalcular fecha_vencimiento a +30 días si es comprobante de deuda
+    let nuevaFechaVenc = comp.fecha_vencimiento;
+    if (esDebe && editForm.fecha_emision) {
+      const d = new Date(`${editForm.fecha_emision}T00:00:00`);
+      d.setDate(d.getDate() + 30);
+      nuevaFechaVenc = d.toISOString().split('T')[0];
+    }
+
     const { error } = await supabase
       .from('comprobantes_cc')
       .update({
         numero: editForm.numero || null,
         fecha_emision: editForm.fecha_emision,
+        fecha_vencimiento: nuevaFechaVenc,
         debe: esDebe ? montoNum : 0,
         haber: !esDebe ? montoNum : 0,
+        saldo_pendiente: esDebe && parseFloat(comp.saldo_pendiente || 0) === parseFloat(comp.debe || 0) ? montoNum : comp.saldo_pendiente,
         observaciones: editForm.observaciones || null
       })
       .eq('id', comp.id);
@@ -163,7 +211,8 @@ export default function CuentasCorrientesContainer({ supabase }) {
       (c.razon_social || '').toLowerCase().includes(busqueda.toLowerCase()) ||
       (c.cuit_dni || '').includes(busqueda);
     const matchDeuda = soloDeudores ? parseFloat(c.saldo_total || 0) > 0 : true;
-    return matchTexto && matchDeuda;
+    const matchVencido = soloVencidosClientes ? parseFloat(c.saldo_vencido || 0) > 0 : true;
+    return matchTexto && matchDeuda && matchVencido;
   });
 
   const comprobantesFiltrados = comprobantes.filter((comp) => {
@@ -172,11 +221,13 @@ export default function CuentasCorrientesContainer({ supabase }) {
       (comp.clientes?.razon_social || '').toLowerCase().includes(busqueda.toLowerCase()) ||
       (comp.numero || '').includes(busqueda) ||
       (comp.observaciones || '').toLowerCase().includes(busqueda.toLowerCase());
-    return matchTipo && matchTexto;
+    const matchVencida = soloFacturasVencidas ? evaluarEstadoComprobante(comp).vencida : true;
+    return matchTipo && matchTexto && matchVencida;
   });
 
   const totalAdeudadoGeneral = saldosClientes.reduce((acc, c) => acc + parseFloat(c.saldo_total || 0), 0);
   const totalVencidoGeneral = saldosClientes.reduce((acc, c) => acc + parseFloat(c.saldo_vencido || 0), 0);
+  const cantFacturasVencidas = comprobantes.filter((comp) => evaluarEstadoComprobante(comp).vencida).length;
 
   return (
     <div>
@@ -211,7 +262,9 @@ export default function CuentasCorrientesContainer({ supabase }) {
         </div>
 
         <div style={{ backgroundColor: '#fcfbf9', border: '1px solid #e5e0d8', borderRadius: '10px', padding: '1rem 1.25rem' }}>
-          <span style={{ fontSize: '0.8rem', color: '#dc2626', fontWeight: 'bold', textTransform: 'uppercase' }}>Deuda Vencida Total</span>
+          <span style={{ fontSize: '0.8rem', color: '#dc2626', fontWeight: 'bold', textTransform: 'uppercase' }}>
+            Deuda Vencida (+30 días) · {cantFacturasVencidas} fc
+          </span>
           <div style={{ fontSize: '1.5rem', fontWeight: '900', color: '#dc2626', marginTop: '0.25rem' }}>
             $ {totalVencidoGeneral.toLocaleString('es-AR', { minimumFractionDigits: 2 })}
           </div>
@@ -272,15 +325,27 @@ export default function CuentasCorrientesContainer({ supabase }) {
               style={{ flex: 1, maxWidth: '400px', padding: '0.6rem 0.85rem', borderRadius: '8px', border: '1px solid #dcd5c9', backgroundColor: '#f5f2eb' }}
             />
 
-            <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.85rem', fontWeight: 'bold', color: '#44403c', cursor: 'pointer' }}>
-              <input 
-                type="checkbox" 
-                checked={soloDeudores} 
-                onChange={(e) => setSoloDeudores(e.target.checked)}
-                style={{ accentColor: '#15803d', width: '16px', height: '16px' }}
-              />
-              Ver solo clientes con deuda
-            </label>
+            <div style={{ display: 'flex', gap: '1.25rem', flexWrap: 'wrap' }}>
+              <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.85rem', fontWeight: 'bold', color: '#44403c', cursor: 'pointer' }}>
+                <input 
+                  type="checkbox" 
+                  checked={soloDeudores} 
+                  onChange={(e) => setSoloDeudores(e.target.checked)}
+                  style={{ accentColor: '#15803d', width: '16px', height: '16px' }}
+                />
+                Solo con deuda
+              </label>
+
+              <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.85rem', fontWeight: 'bold', color: '#dc2626', cursor: 'pointer' }}>
+                <input 
+                  type="checkbox" 
+                  checked={soloVencidosClientes} 
+                  onChange={(e) => setSoloVencidosClientes(e.target.checked)}
+                  style={{ accentColor: '#dc2626', width: '16px', height: '16px' }}
+                />
+                Solo con deuda vencida (+30d)
+              </label>
+            </div>
           </div>
 
           <div style={{ overflowX: 'auto' }}>
@@ -289,7 +354,7 @@ export default function CuentasCorrientesContainer({ supabase }) {
                 <tr style={{ backgroundColor: '#eeeae1', color: '#44403c', borderBottom: '2px solid #dcd5c9' }}>
                   <th style={{ padding: '0.75rem 1rem' }}>Cliente</th>
                   <th style={{ padding: '0.75rem 1rem', textAlign: 'right' }}>Saldo Total</th>
-                  <th style={{ padding: '0.75rem 1rem', textAlign: 'right' }}>Deuda Vencida</th>
+                  <th style={{ padding: '0.75rem 1rem', textAlign: 'right' }}>Deuda Vencida (+30d)</th>
                   <th style={{ padding: '0.75rem 1rem', textAlign: 'center' }}>Últ. Movimiento</th>
                   <th style={{ padding: '0.75rem 1rem', textAlign: 'right' }}>Acciones</th>
                 </tr>
@@ -348,10 +413,27 @@ export default function CuentasCorrientesContainer({ supabase }) {
               placeholder="🔍 Buscar por Cliente, N° comprobante u Observaciones..."
               value={busqueda}
               onChange={(e) => setBusqueda(e.target.value)}
-              style={{ flex: 1, maxWidth: '420px', padding: '0.6rem 0.85rem', borderRadius: '8px', border: '1px solid #dcd5c9', backgroundColor: '#f5f2eb' }}
+              style={{ flex: 1, maxWidth: '380px', padding: '0.6rem 0.85rem', borderRadius: '8px', border: '1px solid #dcd5c9', backgroundColor: '#f5f2eb' }}
             />
 
-            <div style={{ display: 'flex', gap: '0.3rem', flexWrap: 'wrap' }}>
+            <div style={{ display: 'flex', gap: '0.3rem', flexWrap: 'wrap', alignItems: 'center' }}>
+              <button
+                onClick={() => setSoloFacturasVencidas(!soloFacturasVencidas)}
+                style={{
+                  padding: '0.35rem 0.7rem',
+                  borderRadius: '4px',
+                  border: '1px solid #fca5a5',
+                  backgroundColor: soloFacturasVencidas ? '#dc2626' : '#fef2f2',
+                  color: soloFacturasVencidas ? '#fff' : '#dc2626',
+                  fontWeight: 'bold',
+                  fontSize: '0.75rem',
+                  cursor: 'pointer',
+                  marginRight: '0.35rem'
+                }}
+              >
+                ⚠️ Solo Vencidas ({cantFacturasVencidas})
+              </button>
+
               {['TODOS', 'RECIBO_COBRANZA', 'FACTURA_A', 'FACTURA_B', 'NOTA_CREDITO'].map((tipoFiltro) => (
                 <button
                   key={tipoFiltro}
@@ -380,7 +462,7 @@ export default function CuentasCorrientesContainer({ supabase }) {
                   <th style={{ padding: '0.75rem' }}>Fecha</th>
                   <th style={{ padding: '0.75rem' }}>Tipo / N° Comprobante</th>
                   <th style={{ padding: '0.75rem' }}>Cliente</th>
-                  <th style={{ padding: '0.75rem' }}>Detalle / Obs.</th>
+                  <th style={{ padding: '0.75rem' }}>Detalle / Estado</th>
                   <th style={{ padding: '0.75rem', textAlign: 'right' }}>Debe (+)</th>
                   <th style={{ padding: '0.75rem', textAlign: 'right' }}>Haber (-)</th>
                   <th style={{ padding: '0.75rem', textAlign: 'center' }}>Acciones</th>
@@ -405,6 +487,7 @@ export default function CuentasCorrientesContainer({ supabase }) {
                     const esRecibo = comp.tipo === 'RECIBO_COBRANZA';
                     const debeNum = parseFloat(comp.debe || 0);
                     const haberNum = parseFloat(comp.haber || 0);
+                    const estado = evaluarEstadoComprobante(comp);
 
                     if (estaEditando) {
                       return (
@@ -482,9 +565,14 @@ export default function CuentasCorrientesContainer({ supabase }) {
                         key={comp.id} 
                         onClick={() => handleClicFilaComprobante(comp)}
                         title="Hacé clic sobre esta fila para editar o eliminar el comprobante"
-                        style={{ borderBottom: '1px solid #eeeae1', cursor: 'pointer', transition: 'background-color 0.15s ease' }}
-                        onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#fdfbf7'}
-                        onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+                        style={{
+                          borderBottom: '1px solid #eeeae1',
+                          cursor: 'pointer',
+                          transition: 'background-color 0.15s ease',
+                          backgroundColor: estado.vencida ? '#fffafa' : 'transparent'
+                        }}
+                        onMouseEnter={(e) => e.currentTarget.style.backgroundColor = estado.vencida ? '#fef2f2' : '#fdfbf7'}
+                        onMouseLeave={(e) => e.currentTarget.style.backgroundColor = estado.vencida ? '#fffafa' : 'transparent'}
                       >
                         <td style={{ padding: '0.75rem', whiteSpace: 'nowrap' }}>{comp.fecha_emision}</td>
                         <td style={{ padding: '0.75rem', fontWeight: 'bold' }}>
@@ -494,7 +582,19 @@ export default function CuentasCorrientesContainer({ supabase }) {
                           👤 {comp.clientes?.razon_social || 'Cliente Generico'}
                         </td>
                         <td style={{ padding: '0.75rem', color: '#57534e', fontSize: '0.75rem' }}>
-                          {comp.observaciones || '-'}
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', flexWrap: 'wrap' }}>
+                            {estado.vencida && (
+                              <span style={{ backgroundColor: '#fee2e2', color: '#dc2626', border: '1px solid #fca5a5', padding: '0.15rem 0.45rem', borderRadius: '4px', fontWeight: '800', fontSize: '0.7rem', whiteSpace: 'nowrap' }}>
+                                ⚠️ VENCIDA (+{estado.diasAtraso}d)
+                              </span>
+                            )}
+                            {estado.cancelada && (
+                              <span style={{ backgroundColor: '#dcfce7', color: '#15803d', border: '1px solid #86efac', padding: '0.15rem 0.45rem', borderRadius: '4px', fontWeight: '800', fontSize: '0.7rem', whiteSpace: 'nowrap' }}>
+                                ✓ CANCELADA
+                              </span>
+                            )}
+                            <span>{comp.observaciones || '-'}</span>
+                          </div>
                         </td>
                         <td style={{ padding: '0.75rem', textAlign: 'right', fontWeight: 'bold', color: debeNum > 0 ? '#2b2927' : '#a8a29e', whiteSpace: 'nowrap' }}>
                           {debeNum > 0 ? `$ ${debeNum.toLocaleString('es-AR', { minimumFractionDigits: 2 })}` : '-'}
