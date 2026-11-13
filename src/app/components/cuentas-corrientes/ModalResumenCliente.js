@@ -7,6 +7,7 @@ export default function ModalResumenCliente({ mostrar, onClose, cliente, supabas
   const [mounted, setMounted] = useState(false);
   const [movimientos, setMovimientos] = useState([]);
   const [cargando, setCargando] = useState(true);
+  const [soloVencidas, setSoloVencidas] = useState(false);
   
   // Estado para la edición de un comprobante
   const [editandoId, setEditandoId] = useState(null);
@@ -19,11 +20,56 @@ export default function ModalResumenCliente({ mostrar, onClose, cliente, supabas
 
   useEffect(() => {
     if (mostrar && cliente) {
+      setSoloVencidas(false);
       cargarMovimientos();
     }
   }, [mostrar, cliente]);
 
   if (!mostrar || !mounted || !cliente) return null;
+
+  // Evalúa si un comprobante de deuda tiene más de 30 días desde emisión y sigue impago
+  const evaluarEstadoMovimiento = (m) => {
+    const esDeuda = ['FACTURA_A', 'FACTURA_B', 'FACTURA_C', 'NOTA_DEBITO'].includes(m.tipo);
+    if (!esDeuda) return { esDeuda: false, cancelada: false, vencida: false, diasAtraso: 0, fechaVencStr: null, saldoPend: 0 };
+
+    const saldoPend =
+      m.saldo_pendiente === null || m.saldo_pendiente === undefined
+        ? parseFloat(m.debe || 0)
+        : parseFloat(m.saldo_pendiente || 0);
+
+    let fechaLimite;
+    if (m.fecha_vencimiento) {
+      fechaLimite = new Date(`${m.fecha_vencimiento}T00:00:00`);
+    } else if (m.fecha_emision) {
+      fechaLimite = new Date(`${m.fecha_emision}T00:00:00`);
+      fechaLimite.setDate(fechaLimite.getDate() + 30);
+    }
+
+    const fechaVencStr = fechaLimite
+      ? fechaLimite.toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' })
+      : null;
+
+    if (saldoPend <= 0) {
+      return { esDeuda: true, cancelada: true, vencida: false, diasAtraso: 0, fechaVencStr, saldoPend: 0 };
+    }
+
+    if (!fechaLimite) {
+      return { esDeuda: true, cancelada: false, vencida: false, diasAtraso: 0, fechaVencStr: null, saldoPend };
+    }
+
+    const hoy = new Date();
+    hoy.setHours(0, 0, 0, 0);
+
+    const diffDias = Math.floor((hoy - fechaLimite) / (1000 * 60 * 60 * 24));
+    return {
+      esDeuda: true,
+      cancelada: false,
+      vencida: diffDias > 0,
+      diasAtraso: diffDias > 0 ? diffDias : 0,
+      fechaVencStr,
+      saldoPend
+    };
+  };
 
   const cargarMovimientos = async () => {
     setCargando(true);
@@ -41,7 +87,8 @@ export default function ModalResumenCliente({ mostrar, onClose, cliente, supabas
           const debe = parseFloat(m.debe || 0);
           const haber = parseFloat(m.haber || 0);
           saldoAcumulado += debe - haber;
-          return { ...m, debe, haber, saldoAcumulado };
+          const estado = evaluarEstadoMovimiento({ ...m, debe, haber });
+          return { ...m, debe, haber, saldoAcumulado, estado };
         });
 
         setMovimientos(movsConSaldo);
@@ -53,7 +100,6 @@ export default function ModalResumenCliente({ mostrar, onClose, cliente, supabas
     }
   };
 
-  // Función para formatear el nombre del comprobante en la vista
   const formatearTipoComprobante = (tipo) => {
     switch (tipo) {
       case 'RECIBO_COBRANZA':
@@ -107,13 +153,22 @@ export default function ModalResumenCliente({ mostrar, onClose, cliente, supabas
     const esDebe = mov.debe > 0;
     const montoNum = parseFloat(editForm.monto) || 0;
 
+    let nuevaFechaVenc = mov.fecha_vencimiento;
+    if (esDebe && editForm.fecha_emision) {
+      const d = new Date(`${editForm.fecha_emision}T00:00:00`);
+      d.setDate(d.getDate() + 30);
+      nuevaFechaVenc = d.toISOString().split('T')[0];
+    }
+
     const { error } = await supabase
       .from('comprobantes_cc')
       .update({
         numero: editForm.numero || null,
         fecha_emision: editForm.fecha_emision,
+        fecha_vencimiento: nuevaFechaVenc,
         debe: esDebe ? montoNum : 0,
         haber: !esDebe ? montoNum : 0,
+        saldo_pendiente: esDebe && parseFloat(mov.saldo_pendiente || 0) === parseFloat(mov.debe || 0) ? montoNum : mov.saldo_pendiente,
         observaciones: editForm.observaciones || null
       })
       .eq('id', mov.id);
@@ -137,6 +192,12 @@ export default function ModalResumenCliente({ mostrar, onClose, cliente, supabas
     ? movimientos[movimientos.length - 1].saldoAcumulado 
     : parseFloat(cliente.saldo_total || 0);
 
+  const movimientosVencidos = movimientos.filter((m) => m.estado?.vencida);
+  const totalVencidoCliente = movimientosVencidos.reduce((acc, m) => acc + (m.estado?.saldoPend || 0), 0);
+  const totalAVencerCliente = Math.max(0, saldoFinal - totalVencidoCliente);
+
+  const movimientosVisibles = soloVencidas ? movimientosVencidos : movimientos;
+
   const modalUI = (
     <div
       style={{
@@ -159,7 +220,7 @@ export default function ModalResumenCliente({ mostrar, onClose, cliente, supabas
           border: '1px solid #e5e0d8',
           borderRadius: '14px',
           width: '94%',
-          maxWidth: '920px',
+          maxWidth: '960px',
           maxHeight: '90vh',
           overflowY: 'auto',
           padding: '2rem',
@@ -171,6 +232,10 @@ export default function ModalResumenCliente({ mostrar, onClose, cliente, supabas
       >
         <style>{`
           @media print {
+            * {
+              -webkit-print-color-adjust: exact !important;
+              print-color-adjust: exact !important;
+            }
             body * { visibility: hidden; }
             #area-impresion-resumen, #area-impresion-resumen * { visibility: visible; }
             #area-impresion-resumen {
@@ -180,6 +245,8 @@ export default function ModalResumenCliente({ mostrar, onClose, cliente, supabas
               transform: none !important;
               width: 100% !important;
               max-width: 100% !important;
+              max-height: none !important;
+              overflow: visible !important;
               box-shadow: none !important;
               border: none !important;
               padding: 0 !important;
@@ -204,34 +271,76 @@ export default function ModalResumenCliente({ mostrar, onClose, cliente, supabas
           </div>
         </div>
 
-        {/* DATOS DEL CLIENTE */}
-        <div style={{ backgroundColor: '#fcfbf9', border: '1px solid #e5e0d8', borderRadius: '8px', padding: '0.85rem 1.25rem', marginBottom: '1.25rem', display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: '1rem' }}>
+        {/* DATOS DEL CLIENTE Y DESGLOSE DE SALDOS */}
+        <div style={{ backgroundColor: '#fcfbf9', border: '1px solid #e5e0d8', borderRadius: '8px', padding: '0.85rem 1.25rem', marginBottom: '1.25rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem' }}>
           <div>
             <span style={{ fontSize: '0.75rem', color: '#78716c', fontWeight: 'bold', textTransform: 'uppercase' }}>Cliente / Razón Social</span>
             <div style={{ fontSize: '1.05rem', fontWeight: 'bold', color: '#1c1917' }}>{cliente.razon_social || 'SIN NOMBRE'}</div>
             {cliente.cuit_dni && <span style={{ fontSize: '0.8rem', color: '#57534e' }}>CUIT/DNI: {cliente.cuit_dni}</span>}
           </div>
 
-          <div style={{ textAlign: 'right' }}>
-            <span style={{ fontSize: '0.75rem', color: '#78716c', fontWeight: 'bold', textTransform: 'uppercase' }}>Saldo Adeudado</span>
-            <div style={{ fontSize: '1.25rem', fontWeight: '900', color: saldoFinal > 0 ? '#15803d' : '#78716c', whiteSpace: 'nowrap' }}>
-              $&nbsp;{saldoFinal.toLocaleString('es-AR', { minimumFractionDigits: 2 })}
+          <div style={{ display: 'flex', gap: '1.5rem', flexWrap: 'wrap', alignItems: 'center' }}>
+            {totalVencidoCliente > 0 && (
+              <div style={{ textAlign: 'right', backgroundColor: '#fef2f2', border: '1px solid #fecaca', padding: '0.45rem 0.85rem', borderRadius: '8px' }}>
+                <span style={{ fontSize: '0.7rem', color: '#dc2626', fontWeight: '800', textTransform: 'uppercase', display: 'block' }}>
+                  ⚠️ Vencido (+30d) · {movimientosVencidos.length} fc
+                </span>
+                <span style={{ fontSize: '1.15rem', fontWeight: '900', color: '#dc2626', whiteSpace: 'nowrap' }}>
+                  $&nbsp;{totalVencidoCliente.toLocaleString('es-AR', { minimumFractionDigits: 2 })}
+                </span>
+              </div>
+            )}
+
+            {totalVencidoCliente > 0 && totalAVencerCliente > 0 && (
+              <div style={{ textAlign: 'right' }}>
+                <span style={{ fontSize: '0.7rem', color: '#78716c', fontWeight: 'bold', textTransform: 'uppercase', display: 'block' }}>
+                  A Vencer (≤30d)
+                </span>
+                <span style={{ fontSize: '1.05rem', fontWeight: '800', color: '#44403c', whiteSpace: 'nowrap' }}>
+                  $&nbsp;{totalAVencerCliente.toLocaleString('es-AR', { minimumFractionDigits: 2 })}
+                </span>
+              </div>
+            )}
+
+            <div style={{ textAlign: 'right' }}>
+              <span style={{ fontSize: '0.75rem', color: '#78716c', fontWeight: 'bold', textTransform: 'uppercase', display: 'block' }}>Saldo Adeudado</span>
+              <div style={{ fontSize: '1.25rem', fontWeight: '900', color: saldoFinal > 0 ? '#15803d' : '#78716c', whiteSpace: 'nowrap' }}>
+                $&nbsp;{saldoFinal.toLocaleString('es-AR', { minimumFractionDigits: 2 })}
+              </div>
             </div>
           </div>
         </div>
+
+        {/* BARRA FILTRO RÁPIDO SOLO VENCIDAS (NO SE IMPRIME) */}
+        {movimientosVencidos.length > 0 && (
+          <div className="no-imprimir" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem', padding: '0.5rem 0.75rem', backgroundColor: '#fef2f2', border: '1px solid #fecaca', borderRadius: '6px' }}>
+            <span style={{ fontSize: '0.8rem', color: '#991b1b', fontWeight: 'bold' }}>
+              ⚠️ Este cliente posee {movimientosVencidos.length} {movimientosVencidos.length === 1 ? 'factura vencida' : 'facturas vencidas'} (más de 30 días desde emisión).
+            </span>
+            <label style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.8rem', fontWeight: 'bold', color: '#dc2626', cursor: 'pointer' }}>
+              <input
+                type="checkbox"
+                checked={soloVencidas}
+                onChange={(e) => setSoloVencidas(e.target.checked)}
+                style={{ accentColor: '#dc2626', width: '15px', height: '15px' }}
+              />
+              Ver solo vencidas
+            </label>
+          </div>
+        )}
 
         {/* TABLA DE MOVIMIENTOS */}
         <div style={{ overflowX: 'auto', marginBottom: '1.5rem' }}>
           <table style={{ width: '100%', tableLayout: 'fixed', borderCollapse: 'collapse', fontSize: '0.8rem', textAlign: 'left' }}>
             <thead>
               <tr style={{ backgroundColor: '#eeeae1', color: '#44403c', borderBottom: '2px solid #dcd5c9' }}>
-                <th style={{ width: '12%', padding: '0.6rem 0.4rem', whiteSpace: 'nowrap' }}>Fecha</th>
-                <th style={{ width: '22%', padding: '0.6rem 0.4rem' }}>Comprobante</th>
-                <th style={{ width: '22%', padding: '0.6rem 0.4rem' }}>Detalle / Obs.</th>
-                <th style={{ width: '14%', padding: '0.6rem 0.4rem', textAlign: 'right', whiteSpace: 'nowrap' }}>Debe (+)</th>
-                <th style={{ width: '14%', padding: '0.6rem 0.4rem', textAlign: 'right', whiteSpace: 'nowrap' }}>Haber (-)</th>
-                <th style={{ width: '14%', padding: '0.6rem 0.4rem', textAlign: 'right', whiteSpace: 'nowrap' }}>Saldo</th>
-                <th className="no-imprimir" style={{ width: '8%', padding: '0.6rem 0.4rem', textAlign: 'center' }}>Acciones</th>
+                <th style={{ width: '11%', padding: '0.6rem 0.4rem', whiteSpace: 'nowrap' }}>Emisión</th>
+                <th style={{ width: '19%', padding: '0.6rem 0.4rem' }}>Comprobante</th>
+                <th style={{ width: '24%', padding: '0.6rem 0.4rem' }}>Estado / Detalle</th>
+                <th style={{ width: '13%', padding: '0.6rem 0.4rem', textAlign: 'right', whiteSpace: 'nowrap' }}>Debe (+)</th>
+                <th style={{ width: '13%', padding: '0.6rem 0.4rem', textAlign: 'right', whiteSpace: 'nowrap' }}>Haber (-)</th>
+                <th style={{ width: '13%', padding: '0.6rem 0.4rem', textAlign: 'right', whiteSpace: 'nowrap' }}>Saldo</th>
+                <th className="no-imprimir" style={{ width: '7%', padding: '0.6rem 0.4rem', textAlign: 'center' }}>Acciones</th>
               </tr>
             </thead>
             <tbody>
@@ -241,16 +350,17 @@ export default function ModalResumenCliente({ mostrar, onClose, cliente, supabas
                     ⏳ Cargando historial de comprobantes...
                   </td>
                 </tr>
-              ) : movimientos.length === 0 ? (
+              ) : movimientosVisibles.length === 0 ? (
                 <tr>
                   <td colSpan={7} style={{ padding: '2rem', textAlign: 'center', color: '#78716c' }}>
                     Sin movimientos registrados en la cuenta corriente.
                   </td>
                 </tr>
               ) : (
-                movimientos.map((m) => {
+                movimientosVisibles.map((m) => {
                   const estaEditando = editandoId === m.id;
                   const nombreComprobante = formatearTipoComprobante(m.tipo);
+                  const est = m.estado || {};
 
                   if (estaEditando) {
                     return (
@@ -314,16 +424,41 @@ export default function ModalResumenCliente({ mostrar, onClose, cliente, supabas
                   }
 
                   return (
-                    <tr key={m.id} style={{ borderBottom: '1px solid #eeeae1' }}>
+                    <tr
+                      key={m.id}
+                      style={{
+                        borderBottom: '1px solid #eeeae1',
+                        backgroundColor: est.vencida ? '#fff5f5' : 'transparent'
+                      }}
+                    >
                       <td style={{ padding: '0.6rem 0.4rem', whiteSpace: 'nowrap' }}>{m.fecha_emision}</td>
-                      <td style={{ padding: '0.6rem 0.4rem', fontWeight: 'bold', wordBreak: 'break-word' }}>
+                      <td style={{ padding: '0.6rem 0.4rem', fontWeight: 'bold', wordBreak: 'break-word', color: est.vencida ? '#991b1b' : '#1c1917' }}>
                         {nombreComprobante} {m.numero ? `#${m.numero}` : ''}
                       </td>
                       <td style={{ padding: '0.6rem 0.4rem', color: '#57534e', fontSize: '0.75rem', wordBreak: 'break-word' }}>
-                        {m.observaciones || '-'}
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.2rem' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', flexWrap: 'wrap' }}>
+                            {est.vencida && (
+                              <span style={{ backgroundColor: '#fee2e2', color: '#dc2626', border: '1px solid #fca5a5', padding: '0.1rem 0.4rem', borderRadius: '4px', fontWeight: '800', fontSize: '0.68rem', whiteSpace: 'nowrap' }}>
+                                ⚠️ VENCIDA (+{est.diasAtraso}d)
+                              </span>
+                            )}
+                            {est.esDeuda && !est.vencida && !est.cancelada && est.fechaVencStr && (
+                              <span style={{ backgroundColor: '#fefce8', color: '#a16207', border: '1px solid #fde047', padding: '0.1rem 0.4rem', borderRadius: '4px', fontWeight: '700', fontSize: '0.68rem', whiteSpace: 'nowrap' }}>
+                                Vto: {est.fechaVencStr}
+                              </span>
+                            )}
+                            {est.cancelada && (
+                              <span style={{ backgroundColor: '#dcfce7', color: '#15803d', border: '1px solid #86efac', padding: '0.1rem 0.4rem', borderRadius: '4px', fontWeight: '700', fontSize: '0.68rem', whiteSpace: 'nowrap' }}>
+                                ✓ CANCELADA
+                              </span>
+                            )}
+                          </div>
+                          {m.observaciones && <span>{m.observaciones}</span>}
+                        </div>
                       </td>
                       
-                      <td style={{ padding: '0.6rem 0.4rem', textAlign: 'right', fontWeight: 'bold', color: m.debe > 0 ? '#2b2927' : '#a8a29e', whiteSpace: 'nowrap' }}>
+                      <td style={{ padding: '0.6rem 0.4rem', textAlign: 'right', fontWeight: 'bold', color: est.vencida ? '#dc2626' : m.debe > 0 ? '#2b2927' : '#a8a29e', whiteSpace: 'nowrap' }}>
                         {m.debe > 0 ? `$\u00A0${m.debe.toLocaleString('es-AR', { minimumFractionDigits: 2 })}` : '-'}
                       </td>
 
@@ -359,6 +494,11 @@ export default function ModalResumenCliente({ mostrar, onClose, cliente, supabas
               )}
             </tbody>
           </table>
+        </div>
+
+        {/* NOTA AL PIE PARA EL CLIENTE */}
+        <div style={{ fontSize: '0.75rem', color: '#78716c', marginBottom: '1rem', borderTop: '1px dashed #dcd5c9', paddingTop: '0.65rem' }}>
+          Condición de cuenta corriente: 30 días fecha de emisión de factura.
         </div>
 
         {/* BOTONES DE ACCIÓN */}
