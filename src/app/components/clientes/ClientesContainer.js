@@ -22,6 +22,7 @@ export default function ClientesContainer({
   const [progresoBcra, setProgresoBcra] = useState('');
   const [cargandoIndividualId, setCargandoIndividualId] = useState(null);
   const [cargandoNombres, setCargandoNombres] = useState(false);
+  const [progresoNombres, setProgresoNombres] = useState('');
 
   // Cliente en edición y alta
   const [clienteDetalle, setClienteDetalle] = useState(null);
@@ -63,7 +64,7 @@ export default function ClientesContainer({
 
     setCargandoBCRA(true);
     if (typeof setYaVerificadoBcra === 'function') {
-      setYaVerificadoBcra(true); // Se marca para no repetir al cambiar de módulo
+      setYaVerificadoBcra(true);
     }
 
     const TAMAÑO_LOTE = 5;
@@ -140,43 +141,60 @@ export default function ClientesContainer({
     }
   };
 
+  // SINCRONIZACIÓN MASIVA DE RAZÓN SOCIAL, CONDICIÓN IVA Y DIRECCIÓN CON AFIP
   const autocompletarNombresPendientes = async () => {
-    setCargandoNombres(true);
-    const pendientes = clientes.filter((c) => {
+    const conCuit = clientes.filter((c) => {
       const valorCuit = String(c.cuit_dni || c.cuit || '').replace(/\D/g, '');
-      const sinNombre = !c.razon_social || c.razon_social.trim() === '' || c.razon_social.includes('PENDIENTE');
-      return sinNombre && valorCuit.length === 11;
+      return valorCuit.length === 11;
     });
 
-    if (pendientes.length === 0) {
-      alert('No hay clientes pendientes de nombre que tengan CUIT válido.');
-      setCargandoNombres(false);
+    if (conCuit.length === 0) {
+      alert('No hay clientes con CUIT de 11 dígitos para verificar.');
       return;
     }
 
+    if (!confirm(`Se van a consultar ${conCuit.length} CUITs en AFIP/ARCA para actualizar Razón Social, Condición IVA y Dirección oficial. ¿Continuar?`)) {
+      return;
+    }
+
+    setCargandoNombres(true);
     let actualizados = 0;
-    for (const cli of pendientes) {
-      const cuitLimpio = String(cli.cuit_dni || cli.cuit).replace(/\D/g, '');
-      try {
-        const res = await fetch(`/api/cuit?cuit=${cuitLimpio}`);
-        if (res.ok) {
-          const data = await res.json();
-          if (data.razonSocial) {
-            await supabase.from('clientes').update({
-              razon_social: data.razonSocial,
-              condicion_iva: data.condicionIva || cli.condicion_iva,
-              direccion: data.direccion || cli.direccion
-            }).eq('id', cli.id);
-            actualizados++;
+    const TAMAÑO_LOTE = 5;
+
+    for (let i = 0; i < conCuit.length; i += TAMAÑO_LOTE) {
+      const lote = conCuit.slice(i, i + TAMAÑO_LOTE);
+      setProgresoNombres(`(${Math.min(i + TAMAÑO_LOTE, conCuit.length)}/${conCuit.length})`);
+
+      await Promise.all(
+        lote.map(async (cli) => {
+          const cuitLimpio = String(cli.cuit_dni || cli.cuit).replace(/\D/g, '');
+          try {
+            const res = await fetch(`/api/cuit?cuit=${cuitLimpio}`);
+            if (res.ok) {
+              const data = await res.json();
+              if (data.razonSocial) {
+                const { error } = await supabase
+                  .from('clientes')
+                  .update({
+                    razon_social: data.razonSocial,
+                    condicion_iva: data.condicionIva || cli.condicion_iva,
+                    direccion: data.direccion || cli.direccion
+                  })
+                  .eq('id', cli.id);
+
+                if (!error) actualizados++;
+              }
+            }
+          } catch (e) {
+            console.error(`Error CUIT ${cuitLimpio}:`, e);
           }
-        }
-      } catch (e) {
-        console.error(`Error CUIT ${cuitLimpio}:`, e);
-      }
+        })
+      );
     }
 
     setCargandoNombres(false);
-    alert(`Proceso finalizado. Se actualizaron ${actualizados} clientes.`);
+    setProgresoNombres('');
+    alert(`Sincronización finalizada. Se actualizaron ${actualizados} de ${conCuit.length} clientes con los datos oficiales de AFIP.`);
     cargarClientes();
   };
 
@@ -241,7 +259,6 @@ export default function ClientesContainer({
         const chqA = typeof infoA === 'object' ? infoA?.cheques || 0 : 0;
         const chqB = typeof infoB === 'object' ? infoB?.cheques || 0 : 0;
 
-        // Ponderación de riesgo: situación x 10 + cheques rechazados
         valA = sitA * 10 + chqA;
         valB = sitB * 10 + chqB;
 
@@ -281,7 +298,7 @@ export default function ClientesContainer({
             </span>
           )}
           <button onClick={autocompletarNombresPendientes} disabled={cargandoNombres} style={{ background: '#0284c7', color: '#fff', border: 'none', padding: '0.55rem 0.9rem', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold', fontSize: '0.8rem' }}>
-            {cargandoNombres ? '⏳ Procesando...' : '⚡ Autocompletar Nombres'}
+            {cargandoNombres ? `⏳ Sincronizando AFIP ${progresoNombres}...` : '⚡ Sincronizar Nombres AFIP'}
           </button>
           <button onClick={() => corroborarBCRAMasivamenteSilencioso(clientes)} disabled={cargandoBCRA} style={{ background: '#d97706', color: '#fff', border: 'none', padding: '0.55rem 0.9rem', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold', fontSize: '0.8rem' }}>
             {cargandoBCRA ? `⏳ Escaneando...` : '🔍 Reevaluar BCRA Masivamente'}
