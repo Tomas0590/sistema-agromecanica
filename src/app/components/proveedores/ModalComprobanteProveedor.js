@@ -5,7 +5,7 @@ import { createPortal } from 'react-dom';
 
 export default function ModalComprobanteProveedor({ mostrar, onClose, supabase, proveedores = [], cotizacionBna = 1200, onGuardado = () => {} }) {
   const [proveedorId, setProveedorId] = useState('');
-  const [tipo, setTipo] = useState('FACTURA_A'); // 'FACTURA_A', 'FACTURA_B', 'ORDEN_PAGO', 'NOTA_CREDITO'
+  const [tipo, setTipo] = useState('FACTURA_A');
   const [numero, setNumero] = useState('');
   const [fechaEmision, setFechaEmision] = useState(new Date().toISOString().split('T')[0]);
   const [moneda, setMoneda] = useState('ARS');
@@ -18,8 +18,21 @@ export default function ModalComprobanteProveedor({ mostrar, onClose, supabase, 
   const [mediosPago, setMediosPago] = useState([]);
   const [chequesEnCartera, setChequesEnCartera] = useState([]);
 
+  const limpiarFormulario = () => {
+    setProveedorId('');
+    setTipo('FACTURA_A');
+    setNumero('');
+    setFechaEmision(new Date().toISOString().split('T')[0]);
+    setMoneda('ARS');
+    setTipoCambio(cotizacionBna);
+    setMontoFactura('');
+    setObservaciones('');
+    setMediosPago([]);
+  };
+
   useEffect(() => {
     if (mostrar) {
+      limpiarFormulario();
       cargarChequesCartera();
     }
   }, [mostrar]);
@@ -45,7 +58,7 @@ export default function ModalComprobanteProveedor({ mostrar, onClose, supabase, 
       ...mediosPago,
       {
         id: Date.now(),
-        metodo, // 'EFECTIVO', 'TRANSFERENCIA', 'CHEQUE_ENDOSADO'
+        metodo,
         monto: '',
         cheque_id: '',
         tc_aplicado: tipoCambio
@@ -148,6 +161,7 @@ export default function ModalComprobanteProveedor({ mostrar, onClose, supabase, 
     }
 
     setGuardando(false);
+    limpiarFormulario();
     onGuardado();
     onClose();
   };
