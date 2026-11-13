@@ -27,10 +27,32 @@ export default function ModalComprobante({ mostrar, onClose, supabase, clientes 
   // ESTADO PARA PDF GENERADO
   const [reciboGenerado, setReciboGenerado] = useState(null);
 
+  const limpiarFormulario = () => {
+    setClienteId('');
+    setTipo('RECIBO_COBRANZA');
+    setNumero('');
+    setFechaEmision(new Date().toISOString().split('T')[0]);
+    setFechaVencimiento('');
+    setMontoFactura('');
+    setObservaciones('');
+    setMediosPago([]);
+    setFacturasPendientes([]);
+    setFacturasSeleccionadas({});
+    setBcraStatusMap({});
+  };
+
   useEffect(() => {
     setMounted(true);
   }, []);
 
+  // Resetea el modal cada vez que se abre
+  useEffect(() => {
+    if (mostrar) {
+      limpiarFormulario();
+    }
+  }, [mostrar]);
+
+  // Calcula el próximo número cuando se abre o cuando cambia el tipo de comprobante
   useEffect(() => {
     if (mostrar) {
       obtenerProximoNumero(tipo);
@@ -119,7 +141,6 @@ export default function ModalComprobante({ mostrar, onClose, supabase, clientes 
     setBcraStatusMap(prev => ({ ...prev, [cuitLimpio]: { cargando: true } }));
 
     try {
-      // 1. Consultar Deudas Activas por CUIT
       const resDeudas = await fetch(`https://api.bcra.gob.ar/centraldedeudores/v1.0/Deudas/${cuitLimpio}`);
       
       let maxSit = 1;
@@ -142,7 +163,6 @@ export default function ModalComprobante({ mostrar, onClose, supabase, clientes 
         }
       }
 
-      // 2. Consultar Cheques Rechazados por CUIT
       try {
         const resCheques = await fetch(`https://api.bcra.gob.ar/centraldedeudores/v1.0/Deudas/ChequesRechazados/${cuitLimpio}`);
         if (resCheques.ok) {
@@ -156,7 +176,6 @@ export default function ModalComprobante({ mostrar, onClose, supabase, clientes 
         console.warn('Error consultando cheques rechazados:', errChq);
       }
 
-      // 3. Determinar Semaforo de Diagnóstico
       let textoSit = '🟢 Situación 1: Normal en BCRA (Sin moras)';
       let colorSit = '#15803d';
       let bgSit = '#f0fdf4';
@@ -219,7 +238,6 @@ export default function ModalComprobante({ mostrar, onClose, supabase, clientes 
     }
 
     if (campo === 'cuit_emisor') {
-      // Permitir tipeo libre pero limpiar caracteres no numéricos para la consulta
       valorFinal = valor;
       const soloNumeros = valor.replace(/\D/g, '');
 
@@ -358,12 +376,17 @@ export default function ModalComprobante({ mostrar, onClose, supabase, clientes 
       }
 
       const clienteObj = clientes.find(c => (c.cliente_id || c.id) == clienteId);
+      const mediosPagoSnapshot = [...mediosPago]; // Copia antes de limpiar el formulario
+
+      limpiarFormulario();
       setReciboGenerado({
         cliente: clienteObj,
         recibo: compData,
-        mediosPago,
+        mediosPago: mediosPagoSnapshot,
         facturasImputadas: listadoImputaciones
       });
+    } else {
+      limpiarFormulario();
     }
 
     setGuardando(false);
