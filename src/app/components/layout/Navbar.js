@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 
-export default function Navbar({ activeTab, setActiveTab, onLogout }) {
+export default function Navbar({ activeTab, setActiveTab, onLogout, alertaChequesPropios = { cantidad: 0, montoTotal: 0 } }) {
   const [dropdownAbierto, setDropdownAbierto] = useState(null);
 
   const toggleDropdown = (menu) => {
@@ -15,6 +15,12 @@ export default function Navbar({ activeTab, setActiveTab, onLogout }) {
   };
 
   const esGrupoActivo = (tabs) => tabs.includes(activeTab);
+
+  const cantAlertas = alertaChequesPropios?.cantidad || 0;
+  const montoAlertasStr = (alertaChequesPropios?.montoTotal || 0).toLocaleString('es-AR', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2
+  });
 
   return (
     <header style={{ backgroundColor: '#1c1917', color: '#fff', borderBottom: '3px solid #15803d', padding: '0.75rem 1.5rem', position: 'relative', zIndex: 1000 }}>
@@ -127,22 +133,111 @@ export default function Navbar({ activeTab, setActiveTab, onLogout }) {
             )}
           </div>
 
-          {/* 2. GRUPO: CARTERA DE VALORES */}
-          <button
-            onClick={() => seleccionarYCerrar('cartera_valores')}
-            style={{
-              backgroundColor: activeTab === 'cartera_valores' ? '#15803d' : 'transparent',
-              color: activeTab === 'cartera_valores' ? '#ffffff' : '#d6d3d1',
-              border: 'none',
-              padding: '0.55rem 0.85rem',
-              borderRadius: '6px',
-              fontWeight: activeTab === 'cartera_valores' ? 'bold' : 'normal',
-              fontSize: '0.85rem',
-              cursor: 'pointer'
-            }}
-          >
-            💳 Cartera de Valores
-          </button>
+          {/* 2. GRUPO: CARTERA DE VALORES Y CHEQUES PROPIOS */}
+          <div style={{ position: 'relative' }}>
+            <button
+              onClick={() => toggleDropdown('valores')}
+              title={cantAlertas > 0 ? `Tenés ${cantAlertas} cheque(s) propio(s) a debitarse en ≤ 5 días por $ ${montoAlertasStr}` : undefined}
+              style={{
+                backgroundColor: esGrupoActivo(['cartera_valores', 'cheques_propios']) ? '#15803d' : '#292524',
+                color: '#ffffff',
+                border: cantAlertas > 0 ? '1px solid #ef4444' : '1px solid #44403c',
+                padding: '0.55rem 0.9rem',
+                borderRadius: '6px',
+                fontWeight: 'bold',
+                fontSize: '0.85rem',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.45rem'
+              }}
+            >
+              💳 Cartera de Valores
+              {cantAlertas > 0 && (
+                <span
+                  style={{
+                    backgroundColor: '#dc2626',
+                    color: '#ffffff',
+                    fontSize: '0.7rem',
+                    fontWeight: '900',
+                    padding: '0.1rem 0.42rem',
+                    borderRadius: '999px',
+                    lineHeight: 1.2
+                  }}
+                >
+                  {cantAlertas}
+                </span>
+              )}
+              <span style={{ fontSize: '0.7rem' }}>▼</span>
+            </button>
+
+            {dropdownAbierto === 'valores' && (
+              <div style={{
+                position: 'absolute',
+                top: '110%',
+                left: 0,
+                backgroundColor: '#1c1917',
+                border: '1px solid #44403c',
+                borderRadius: '8px',
+                boxShadow: '0 10px 25px rgba(0,0,0,0.5)',
+                minWidth: '245px',
+                overflow: 'hidden',
+                zIndex: 1001
+              }}>
+                <button
+                  onClick={() => seleccionarYCerrar('cartera_valores')}
+                  style={{
+                    width: '100%',
+                    textAlign: 'left',
+                    padding: '0.7rem 1rem',
+                    background: activeTab === 'cartera_valores' ? '#292524' : 'transparent',
+                    color: activeTab === 'cartera_valores' ? '#4ade80' : '#e7e5e4',
+                    border: 'none',
+                    borderBottom: '1px solid #292524',
+                    cursor: 'pointer',
+                    fontSize: '0.85rem',
+                    fontWeight: activeTab === 'cartera_valores' ? 'bold' : 'normal'
+                  }}
+                >
+                  💳 Cartera de Valores (Terceros)
+                </button>
+                <button
+                  onClick={() => seleccionarYCerrar('cheques_propios')}
+                  style={{
+                    width: '100%',
+                    textAlign: 'left',
+                    padding: '0.7rem 1rem',
+                    background: activeTab === 'cheques_propios' ? '#292524' : 'transparent',
+                    color: activeTab === 'cheques_propios' ? '#4ade80' : '#e7e5e4',
+                    border: 'none',
+                    cursor: 'pointer',
+                    fontSize: '0.85rem',
+                    fontWeight: activeTab === 'cheques_propios' ? 'bold' : 'normal',
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    gap: '0.5rem'
+                  }}
+                >
+                  <span>🏦 Cheques / eCheqs Propios</span>
+                  {cantAlertas > 0 && (
+                    <span
+                      style={{
+                        backgroundColor: '#dc2626',
+                        color: '#ffffff',
+                        fontSize: '0.68rem',
+                        fontWeight: '900',
+                        padding: '0.12rem 0.45rem',
+                        borderRadius: '999px'
+                      }}
+                    >
+                      {cantAlertas} (≤5d)
+                    </span>
+                  )}
+                </button>
+              </div>
+            )}
+          </div>
 
           {/* 3. GRUPO: INVENTARIO Y VENTAS */}
           <div style={{ position: 'relative' }}>
