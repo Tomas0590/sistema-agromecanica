@@ -18,6 +18,16 @@ export default function ModalComprobanteProveedor({ mostrar, onClose, supabase, 
   const [mediosPago, setMediosPago] = useState([]);
   const [chequesEnCartera, setChequesEnCartera] = useState([]);
 
+  const formatearFechaARG = (fechaStr) => {
+    if (!fechaStr) return '';
+    const limpia = String(fechaStr).split('T')[0];
+    const partes = limpia.split('-');
+    if (partes.length === 3) {
+      return `${partes[2]}-${partes[1]}-${partes[0]}`;
+    }
+    return fechaStr;
+  };
+
   const limpiarFormulario = () => {
     setProveedorId('');
     setTipo('FACTURA_A');
@@ -57,11 +67,16 @@ export default function ModalComprobanteProveedor({ mostrar, onClose, supabase, 
     setMediosPago([
       ...mediosPago,
       {
-        id: Date.now(),
+        id: Date.now() + Math.random(),
         metodo,
         monto: '',
         cheque_id: '',
-        tc_aplicado: tipoCambio
+        tc_aplicado: tipoCambio,
+        // Campos para CHEQUE_PROPIO
+        formato_propio: 'ECHEQ',
+        banco_propio: '',
+        numero_propio: '',
+        fecha_pago_propio: ''
       }
     ]);
   };
@@ -94,6 +109,18 @@ export default function ModalComprobanteProveedor({ mostrar, onClose, supabase, 
       return;
     }
 
+    if (esOrdenPago) {
+      const propioIncompleto = mediosPago.find(
+        (m) =>
+          m.metodo === 'CHEQUE_PROPIO' &&
+          (!m.banco_propio?.trim() || !m.numero_propio?.trim() || !m.fecha_pago_propio || !(parseFloat(m.monto) > 0))
+      );
+      if (propioIncompleto) {
+        alert('Completá Banco, Número, Fecha de Pago y Monto en todos los Cheques/eCheqs Propios agregados.');
+        return;
+      }
+    }
+
     const montoOpCalculado = moneda === 'USD' ? totalOpUsd : totalOpArs;
     const montoTotalOperacion = esOrdenPago ? montoOpCalculado : parseFloat(montoFactura || 0);
 
@@ -104,9 +131,15 @@ export default function ModalComprobanteProveedor({ mostrar, onClose, supabase, 
 
     setGuardando(true);
 
-    const esDebe = ['FACTURA_A', 'FACTURA_B'].includes(tipo);
+    // FACTURA A, FACTURA B y NOTA DE DÉBITO suman deuda (+Debe); ORDEN_PAGO y NOTA_CREDITO restan (-Haber)
+    const esDebe = ['FACTURA_A', 'FACTURA_B', 'NOTA_DEBITO'].includes(tipo);
     const debeValor = esDebe ? montoTotalOperacion : 0;
     const haberValor = !esDebe ? montoTotalOperacion : 0;
+
+    const proveedorObj = proveedores.find(
+      (p) => String(p.proveedor_id || p.id) === String(proveedorId)
+    );
+    const nombreProveedor = proveedorObj?.razon_social || 'PROVEEDOR';
 
     let obsDetalle = observaciones;
     if (esOrdenPago && mediosPago.length > 0) {
@@ -114,6 +147,10 @@ export default function ModalComprobanteProveedor({ mostrar, onClose, supabase, 
         if (m.metodo === 'CHEQUE_ENDOSADO') {
           const chq = chequesEnCartera.find(c => c.id === m.cheque_id);
           return `Endoso Cheque #${chq?.numero || 'S/N'} ($${m.monto})`;
+        }
+        if (m.metodo === 'CHEQUE_PROPIO') {
+          const etiquetaTipo = m.formato_propio === 'ECHEQ' ? 'eCheq Propio' : 'Cheque Propio';
+          return `${etiquetaTipo} ${m.banco_propio} #${m.numero_propio} Vto ${formatearFechaARG(m.fecha_pago_propio)} ($${m.monto})`;
         }
         return `${m.metodo}: $${m.monto}`;
       }).join(' | ');
@@ -144,7 +181,7 @@ export default function ModalComprobanteProveedor({ mostrar, onClose, supabase, 
       return;
     }
 
-    // 2. Si es Orden de Pago, actualizar estado de los cheques endosados
+    // 2. Si es Orden de Pago, actualizar cheques endosados y registrar cheques/echeqs propios emitidos
     if (esOrdenPago) {
       for (const m of mediosPago) {
         if (m.metodo === 'CHEQUE_ENDOSADO' && m.cheque_id) {
@@ -158,6 +195,33 @@ export default function ModalComprobanteProveedor({ mostrar, onClose, supabase, 
             .eq('id', m.cheque_id);
         }
       }
+
+      const propiosAInsertar = mediosPago
+        .filter((m) => m.metodo === 'CHEQUE_PROPIO' && parseFloat(m.monto || 0) > 0)
+        .map((m) => ({
+          formato: m.formato_propio || 'ECHEQ',
+          banco: m.banco_propio.trim(),
+          numero: m.numero_propio.trim(),
+          beneficiario: nombreProveedor,
+          proveedor_id: proveedorId,
+          fecha_emision: fechaEmision,
+          fecha_pago: m.fecha_pago_propio,
+          monto: parseFloat(m.monto),
+          estado: 'PENDIENTE',
+          comprobante_proveedor_id: compData?.id || null,
+          numero_op: numero || null,
+          observaciones: `Emitido en OP #${numero || compData.id.slice(0, 8)}`
+        }));
+
+      if (propiosAInsertar.length > 0) {
+        const { error: errorPropios } = await supabase
+          .from('cheques_propios')
+          .insert(propiosAInsertar);
+
+        if (errorPropios) {
+          alert(`La OP se registró, pero hubo un error al guardar el cheque/eCheq propio: ${errorPropios.message}`);
+        }
+      }
     }
 
     setGuardando(false);
@@ -168,7 +232,7 @@ export default function ModalComprobanteProveedor({ mostrar, onClose, supabase, 
 
   return createPortal(
     <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.5)', backdropFilter: 'blur(3px)', zIndex: 999999, display: 'flex', justifyContent: 'center', alignItems: 'center' }} onClick={onClose}>
-      <div style={{ background: '#fcfbf9', border: '1px solid #e5e0d8', borderRadius: '12px', width: '94%', maxWidth: '680px', maxHeight: '90vh', overflowY: 'auto', padding: '1.5rem', color: '#2b2927', boxShadow: '0 10px 25px rgba(0,0,0,0.25)' }} onClick={(e) => e.stopPropagation()}>
+      <div style={{ background: '#fcfbf9', border: '1px solid #e5e0d8', borderRadius: '12px', width: '94%', maxWidth: '720px', maxHeight: '90vh', overflowY: 'auto', padding: '1.5rem', color: '#2b2927', boxShadow: '0 10px 25px rgba(0,0,0,0.25)' }} onClick={(e) => e.stopPropagation()}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem', borderBottom: '1px solid #eeeae1', paddingBottom: '0.5rem' }}>
           <h3 style={{ margin: 0, color: '#15803d', fontSize: '1.15rem', fontWeight: '800' }}>📄 Cargar Factura de Compra / Orden de Pago</h3>
           <button onClick={onClose} style={{ background: 'transparent', border: 'none', fontWeight: 'bold', cursor: 'pointer' }}>✕</button>
@@ -180,7 +244,7 @@ export default function ModalComprobanteProveedor({ mostrar, onClose, supabase, 
             <select value={proveedorId} onChange={(e) => setProveedorId(e.target.value)} required style={{ width: '100%', padding: '0.55rem', borderRadius: '6px', border: '1px solid #dcd5c9', background: '#fff' }}>
               <option value="">-- Seleccionar Proveedor --</option>
               {proveedores.map(p => (
-                <option key={p.proveedor_id} value={p.proveedor_id}>{p.razon_social}</option>
+                <option key={p.proveedor_id || p.id} value={p.proveedor_id || p.id}>{p.razon_social}</option>
               ))}
             </select>
           </div>
@@ -191,6 +255,7 @@ export default function ModalComprobanteProveedor({ mostrar, onClose, supabase, 
               <select value={tipo} onChange={(e) => setTipo(e.target.value)} style={{ width: '100%', padding: '0.55rem', borderRadius: '6px', border: '1px solid #dcd5c9', background: '#fff' }}>
                 <option value="FACTURA_A">Factura A (+Deuda)</option>
                 <option value="FACTURA_B">Factura B (+Deuda)</option>
+                <option value="NOTA_DEBITO">Nota de Débito (+Deuda)</option>
                 <option value="ORDEN_PAGO">Orden de Pago (-Deuda)</option>
                 <option value="NOTA_CREDITO">Nota de Crédito (-Deuda)</option>
               </select>
@@ -230,22 +295,29 @@ export default function ModalComprobanteProveedor({ mostrar, onClose, supabase, 
           {/* FORMAS DE PAGO EN ORDEN DE PAGO */}
           {esOrdenPago && (
             <div style={{ backgroundColor: '#f5f2eb', border: '1px solid #e5e0d8', borderRadius: '8px', padding: '0.85rem' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.6rem', flexWrap: 'wrap', gap: '0.4rem' }}>
                 <span style={{ fontSize: '0.8rem', fontWeight: 'bold', color: '#1c1917' }}>💳 Formas de Pago Aplicadas</span>
-                <div style={{ display: 'flex', gap: '0.3rem' }}>
-                  <button type="button" onClick={() => agregarMedioPago('EFECTIVO')} style={{ padding: '0.25rem 0.5rem', fontSize: '0.7rem', borderRadius: '4px', border: '1px solid #dcd5c9', background: '#fff', cursor: 'pointer', fontWeight: 'bold' }}>+ Efectivo</button>
-                  <button type="button" onClick={() => agregarMedioPago('TRANSFERENCIA')} style={{ padding: '0.25rem 0.5rem', fontSize: '0.7rem', borderRadius: '4px', border: '1px solid #dcd5c9', background: '#fff', cursor: 'pointer', fontWeight: 'bold' }}>+ Transf.</button>
-                  <button type="button" onClick={() => agregarMedioPago('CHEQUE_ENDOSADO')} style={{ padding: '0.25rem 0.5rem', fontSize: '0.7rem', borderRadius: '4px', border: '1px solid #15803d', background: '#15803d', color: '#fff', cursor: 'pointer', fontWeight: 'bold' }}>+ Endosar Cheque</button>
+                <div style={{ display: 'flex', gap: '0.3rem', flexWrap: 'wrap' }}>
+                  <button type="button" onClick={() => agregarMedioPago('EFECTIVO')} style={{ padding: '0.25rem 0.5rem', fontSize: '0.72rem', borderRadius: '4px', border: '1px solid #dcd5c9', background: '#fff', cursor: 'pointer', fontWeight: 'bold' }}>+ Efectivo</button>
+                  <button type="button" onClick={() => agregarMedioPago('TRANSFERENCIA')} style={{ padding: '0.25rem 0.5rem', fontSize: '0.72rem', borderRadius: '4px', border: '1px solid #dcd5c9', background: '#fff', cursor: 'pointer', fontWeight: 'bold' }}>+ Transf.</button>
+                  <button type="button" onClick={() => agregarMedioPago('CHEQUE_ENDOSADO')} style={{ padding: '0.25rem 0.5rem', fontSize: '0.72rem', borderRadius: '4px', border: '1px solid #15803d', background: '#15803d', color: '#fff', cursor: 'pointer', fontWeight: 'bold' }}>+ Endosar Cheque</button>
+                  <button type="button" onClick={() => agregarMedioPago('CHEQUE_PROPIO')} style={{ padding: '0.25rem 0.55rem', fontSize: '0.72rem', borderRadius: '4px', border: '1px solid #0369a1', background: '#0284c7', color: '#fff', cursor: 'pointer', fontWeight: 'bold' }}>+ Cheque / eCheq Propio</button>
                 </div>
               </div>
 
               {mediosPago.map((m) => (
-                <div key={m.id} style={{ background: '#fff', border: '1px solid #dcd5c9', borderRadius: '6px', padding: '0.6rem', marginBottom: '0.4rem' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.3rem' }}>
-                    <span style={{ fontWeight: 'bold', fontSize: '0.75rem' }}>
-                      {m.metodo === 'EFECTIVO' ? '💵 Efectivo' : m.metodo === 'TRANSFERENCIA' ? '🏦 Transferencia' : '📜 Endoso de Cheque en Cartera'}
+                <div key={m.id} style={{ background: '#fff', border: '1px solid #dcd5c9', borderRadius: '6px', padding: '0.65rem', marginBottom: '0.45rem' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.35rem' }}>
+                    <span style={{ fontWeight: 'bold', fontSize: '0.76rem', color: m.metodo === 'CHEQUE_PROPIO' ? '#0369a1' : '#1c1917' }}>
+                      {m.metodo === 'EFECTIVO'
+                        ? '💵 Efectivo'
+                        : m.metodo === 'TRANSFERENCIA'
+                        ? '🏦 Transferencia'
+                        : m.metodo === 'CHEQUE_ENDOSADO'
+                        ? '📜 Endoso de Cheque en Cartera'
+                        : '🏦 Cheque / eCheq Propio Emitido'}
                     </span>
-                    <button type="button" onClick={() => eliminarMedio(m.id)} style={{ border: 'none', background: 'transparent', color: '#dc2626', cursor: 'pointer' }}>✕</button>
+                    <button type="button" onClick={() => eliminarMedio(m.id)} style={{ border: 'none', background: 'transparent', color: '#dc2626', cursor: 'pointer', fontWeight: 'bold' }}>✕</button>
                   </div>
 
                   {m.metodo === 'CHEQUE_ENDOSADO' ? (
@@ -254,10 +326,72 @@ export default function ModalComprobanteProveedor({ mostrar, onClose, supabase, 
                         <option value="">-- Seleccionar Cheque de la Cartera --</option>
                         {chequesEnCartera.map(c => (
                           <option key={c.id} value={c.id}>
-                            #{c.numero} - {c.banco} | Venc: {c.fecha_pago} | Monto: ${parseFloat(c.monto).toLocaleString('es-AR')}
+                            #{c.numero} - {c.banco} | Venc: {formatearFechaARG(c.fecha_pago)} | Monto: ${parseFloat(c.monto).toLocaleString('es-AR')}
                           </option>
                         ))}
                       </select>
+                    </div>
+                  ) : m.metodo === 'CHEQUE_PROPIO' ? (
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(125px, 1fr))', gap: '0.45rem', backgroundColor: '#f0f9ff', padding: '0.55rem', borderRadius: '6px', border: '1px solid #bae6fd' }}>
+                      <div>
+                        <label style={{ display: 'block', fontSize: '0.68rem', fontWeight: 'bold', color: '#0369a1', marginBottom: '0.15rem' }}>Formato *</label>
+                        <select
+                          value={m.formato_propio}
+                          onChange={(e) => actualizarMedio(m.id, 'formato_propio', e.target.value)}
+                          style={{ width: '100%', padding: '0.38rem', borderRadius: '4px', border: '1px solid #dcd5c9', fontSize: '0.75rem', background: '#fff' }}
+                        >
+                          <option value="ECHEQ">💻 eCheq</option>
+                          <option value="FISICO">📄 Físico</option>
+                        </select>
+                      </div>
+
+                      <div>
+                        <label style={{ display: 'block', fontSize: '0.68rem', fontWeight: 'bold', color: '#0369a1', marginBottom: '0.15rem' }}>Banco Emisor *</label>
+                        <input
+                          type="text"
+                          placeholder="Ej: Nación"
+                          value={m.banco_propio}
+                          onChange={(e) => actualizarMedio(m.id, 'banco_propio', e.target.value)}
+                          required
+                          style={{ width: '100%', padding: '0.38rem', borderRadius: '4px', border: '1px solid #dcd5c9', fontSize: '0.75rem', boxSizing: 'border-box' }}
+                        />
+                      </div>
+
+                      <div>
+                        <label style={{ display: 'block', fontSize: '0.68rem', fontWeight: 'bold', color: '#0369a1', marginBottom: '0.15rem' }}>N° Cheque *</label>
+                        <input
+                          type="text"
+                          placeholder="N° valor"
+                          value={m.numero_propio}
+                          onChange={(e) => actualizarMedio(m.id, 'numero_propio', e.target.value)}
+                          required
+                          style={{ width: '100%', padding: '0.38rem', borderRadius: '4px', border: '1px solid #dcd5c9', fontSize: '0.75rem', boxSizing: 'border-box' }}
+                        />
+                      </div>
+
+                      <div>
+                        <label style={{ display: 'block', fontSize: '0.68rem', fontWeight: 'bold', color: '#dc2626', marginBottom: '0.15rem' }}>Fecha Débito *</label>
+                        <input
+                          type="date"
+                          value={m.fecha_pago_propio}
+                          onChange={(e) => actualizarMedio(m.id, 'fecha_pago_propio', e.target.value)}
+                          required
+                          style={{ width: '100%', padding: '0.38rem', borderRadius: '4px', border: '1px solid #fca5a5', fontSize: '0.75rem', boxSizing: 'border-box' }}
+                        />
+                      </div>
+
+                      <div>
+                        <label style={{ display: 'block', fontSize: '0.68rem', fontWeight: 'bold', color: '#0369a1', marginBottom: '0.15rem' }}>Monto (ARS) *</label>
+                        <input
+                          type="number"
+                          step="0.01"
+                          placeholder="0.00"
+                          value={m.monto}
+                          onChange={(e) => actualizarMedio(m.id, 'monto', e.target.value)}
+                          required
+                          style={{ width: '100%', padding: '0.38rem', borderRadius: '4px', border: '1px solid #dcd5c9', fontSize: '0.75rem', fontWeight: 'bold', boxSizing: 'border-box' }}
+                        />
+                      </div>
                     </div>
                   ) : (
                     <input type="number" step="0.01" placeholder="Monto en ARS" value={m.monto} onChange={(e) => actualizarMedio(m.id, 'monto', e.target.value)} style={{ width: '100%', padding: '0.4rem', borderRadius: '4px', border: '1px solid #dcd5c9', boxSizing: 'border-box', fontWeight: 'bold' }} />
