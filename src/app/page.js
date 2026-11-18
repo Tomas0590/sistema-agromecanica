@@ -2,7 +2,7 @@
 
 export const dynamic = 'force-dynamic';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { createClient } from '@supabase/supabase-js';
 import dynamicComponent from 'next/dynamic';
 
@@ -10,6 +10,7 @@ const Navbar = dynamicComponent(() => import('./components/layout/Navbar'), { ss
 const ClientesContainer = dynamicComponent(() => import('./components/clientes/ClientesContainer'), { ssr: false });
 const CuentasCorrientesContainer = dynamicComponent(() => import('./components/cuentas-corrientes/CuentasCorrientesContainer'), { ssr: false });
 const CarteraChequesContainer = dynamicComponent(() => import('./components/cheques/CarteraChequesContainer'), { ssr: false });
+const ChequesPropiosContainer = dynamicComponent(() => import('./components/cheques/ChequesPropiosContainer'), { ssr: false });
 const StockContainer = dynamicComponent(() => import('./components/stock/StockContainer'), { ssr: false });
 const ProveedoresContainer = dynamicComponent(() => import('./components/proveedores/ProveedoresContainer'), { ssr: false });
 
@@ -32,6 +33,10 @@ export default function Home() {
   const [situacionesMap, setSituacionesMap] = useState({});
   const [yaVerificadoBcra, setYaVerificadoBcra] = useState(false);
 
+  // Alerta global de Cheques/eCheqs propios a debitarse en <= 5 días
+  const [alertaChequesPropios, setAlertaChequesPropios] = useState({ cantidad: 0, montoTotal: 0 });
+  const [proveedoresLista, setProveedoresLista] = useState([]);
+
   useEffect(() => {
     const getSession = async () => {
       const { data: { session: activeSession } } = await supabase.auth.getSession();
@@ -47,6 +52,49 @@ export default function Home() {
 
     return () => subscription.unsubscribe();
   }, []);
+
+  // Verifica cheques/eCheqs propios pendientes que vencen en los próximos 5 días (o ya vencidos sin debitar)
+  const verificarAlertaChequesPropios = useCallback(async () => {
+    try {
+      const { data, error } = await supabase
+        .from('cheques_propios')
+        .select('id, fecha_pago, monto, estado')
+        .eq('estado', 'PENDIENTE');
+
+      if (!error && data) {
+        const hoy = new Date();
+        hoy.setHours(0, 0, 0, 0);
+
+        const proximos = data.filter((ch) => {
+          if (!ch.fecha_pago) return false;
+          const fp = new Date(`${ch.fecha_pago}T00:00:00`);
+          const diffDias = Math.round((fp - hoy) / (1000 * 60 * 60 * 24));
+          return diffDias <= 5;
+        });
+
+        const montoTotal = proximos.reduce((acc, c) => acc + parseFloat(c.monto || 0), 0);
+        setAlertaChequesPropios({ cantidad: proximos.length, montoTotal });
+      }
+    } catch (e) {
+      console.error('Error verificando alertas de cheques propios:', e);
+    }
+  }, []);
+
+  // Cargar proveedores para autocompletar beneficiario al emitir cheque propio
+  useEffect(() => {
+    if (!session) return;
+
+    verificarAlertaChequesPropios();
+
+    const cargarProveedores = async () => {
+      const { data } = await supabase
+        .from('proveedores')
+        .select('id, razon_social')
+        .order('razon_social', { ascending: true });
+      if (data) setProveedoresLista(data);
+    };
+    cargarProveedores();
+  }, [session, activeTab, verificarAlertaChequesPropios]);
 
   const handleLogin = async (e) => {
     e.preventDefault();
@@ -163,7 +211,8 @@ export default function Home() {
       <Navbar 
         activeTab={activeTab} 
         setActiveTab={setActiveTab} 
-        onLogout={handleSignOut} 
+        onLogout={handleSignOut}
+        alertaChequesPropios={alertaChequesPropios}
       />
 
       <main style={{ maxWidth: '1200px', margin: '0 auto', padding: '1.5rem' }}>
@@ -183,6 +232,13 @@ export default function Home() {
 
         {activeTab === 'cartera_valores' && (
           <CarteraChequesContainer supabase={supabase} />
+        )}
+
+        {activeTab === 'cheques_propios' && (
+          <ChequesPropiosContainer 
+            supabase={supabase} 
+            proveedores={proveedoresLista}
+          />
         )}
 
         {activeTab === 'stock' && (
