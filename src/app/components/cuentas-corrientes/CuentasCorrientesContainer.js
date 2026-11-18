@@ -11,6 +11,9 @@ export default function CuentasCorrientesContainer({ supabase }) {
   const [comprobantes, setComprobantes] = useState([]);
   const [cargando, setCargando] = useState(true);
 
+  // Caché de situación BCRA por CUIT: { [cuitLimpio]: number | 'SIN_DEUDA' | 'ERROR' }
+  const [situacionBcraMap, setSituacionBcraMap] = useState({});
+
   // Filtros
   const [busqueda, setBusqueda] = useState('');
   const [soloDeudores, setSoloDeudores] = useState(false);
@@ -33,9 +36,163 @@ export default function CuentasCorrientesContainer({ supabase }) {
   const [guardandoEdicion, setGuardandoEdicion] = useState(false);
 
   useEffect(() => {
+    // Restaurar caché de BCRA de la sesión si existe
+    try {
+      const guardado = sessionStorage.getItem('agromecanica_bcra_cache');
+      if (guardado) {
+        setSituacionBcraMap(JSON.parse(guardado));
+      }
+    } catch (_) {}
+
     cargarSaldos();
     cargarComprobantes();
   }, []);
+
+  // Consulta en segundo plano la situación BCRA de los clientes que tienen CUIT de 11 dígitos
+  useEffect(() => {
+    if (!saldosClientes || saldosClientes.length === 0) return;
+
+    let cancelado = false;
+
+    const consultarLoteBCRA = async () => {
+      let cacheActual = {};
+      try {
+        cacheActual = JSON.parse(sessionStorage.getItem('agromecanica_bcra_cache') || '{}');
+      } catch (_) {}
+
+      const cuitsPendientes = saldosClientes
+        .map((c) => String(c.cuit_dni || '').replace(/\D/g, ''))
+        .filter((cuit) => cuit.length === 11 && cacheActual[cuit] === undefined);
+
+      const unicos = [...new Set(cuitsPendientes)];
+      if (unicos.length === 0) return;
+
+      // Procesar de a 4 en paralelo para no saturar la API del BCRA
+      for (let i = 0; i < unicos.length; i += 4) {
+        if (cancelado) break;
+        const bloque = unicos.slice(i, i + 4);
+
+        await Promise.all(
+          bloque.map(async (cuit) => {
+            try {
+              const res = await fetch(`https://api.bcra.gob.ar/centraldedeudores/v1.0/Deudas/${cuit}`);
+              if (res.status === 404) {
+                cacheActual[cuit] = 'SIN_DEUDA';
+                return;
+              }
+              if (!res.ok) {
+                cacheActual[cuit] = 'ERROR';
+                return;
+              }
+
+              const json = await res.json();
+              const periodos = json?.results?.periodos || [];
+              let peorSituacion = 0;
+
+              if (periodos.length > 0 && Array.isArray(periodos[0].entidades)) {
+                periodos[0].entidades.forEach((ent) => {
+                  const sit = Number(ent.situacion || 0);
+                  if (sit > peorSituacion) peorSituacion = sit;
+                });
+              }
+
+              cacheActual[cuit] = peorSituacion > 0 ? peorSituacion : 'SIN_DEUDA';
+            } catch (_) {
+              cacheActual[cuit] = 'ERROR';
+            }
+          })
+        );
+
+        if (!cancelado) {
+          setSituacionBcraMap({ ...cacheActual });
+          try {
+            sessionStorage.setItem('agromecanica_bcra_cache', JSON.stringify(cacheActual));
+          } catch (_) {}
+        }
+      }
+    };
+
+    consultarLoteBCRA();
+
+    return () => {
+      cancelado = true;
+    };
+  }, [saldosClientes]);
+
+  // Renderiza la etiqueta chiquita de situación BCRA con el código de colores pedido
+  const renderBadgeBCRA = (cuitRaw) => {
+    const cuit = String(cuitRaw || '').replace(/\D/g, '');
+    if (cuit.length !== 11) return null;
+
+    const sit = situacionBcraMap[cuit];
+    if (sit === undefined) {
+      return (
+        <span style={{ fontSize: '0.68rem', color: '#a8a29e', fontWeight: '600' }}>
+          BCRA: consultando...
+        </span>
+      );
+    }
+
+    if (sit === 'ERROR') return null;
+
+    if (sit === 'SIN_DEUDA') {
+      return (
+        <span
+          style={{
+            display: 'inline-block',
+            fontSize: '0.68rem',
+            fontWeight: '700',
+            padding: '0.08rem 0.42rem',
+            borderRadius: '4px',
+            backgroundColor: '#f5f5f4',
+            color: '#78716c',
+            border: '1px solid #e7e5e4'
+          }}
+        >
+          BCRA: Sin deudas
+        </span>
+      );
+    }
+
+    const numSit = Number(sit);
+    let estilos = {
+      bg: '#dcfce7',
+      color: '#15803d',
+      border: '#86efac'
+    };
+
+    if (numSit === 1) {
+      // Sit 1 Verde
+      estilos = { bg: '#dcfce7', color: '#15803d', border: '#86efac' };
+    } else if (numSit === 2) {
+      // Sit 2 Amarilla
+      estilos = { bg: '#fef9c3', color: '#a16207', border: '#fde047' };
+    } else if (numSit === 3 || numSit === 4) {
+      // Sit 3-4 Naranja
+      estilos = { bg: '#ffedd5', color: '#c2410c', border: '#fdba74' };
+    } else if (numSit >= 5) {
+      // Sit 5 Rojo
+      estilos = { bg: '#fee2e2', color: '#dc2626', border: '#fca5a5' };
+    }
+
+    return (
+      <span
+        style={{
+          display: 'inline-block',
+          fontSize: '0.68rem',
+          fontWeight: '800',
+          padding: '0.08rem 0.45rem',
+          borderRadius: '4px',
+          backgroundColor: estilos.bg,
+          color: estilos.color,
+          border: `1px solid ${estilos.border}`,
+          letterSpacing: '0.01em'
+        }}
+      >
+        BCRA: Sit. {numSit}
+      </span>
+    );
+  };
 
   // Convierte YYYY-MM-DD a DD-MM-AAAA sin desfasajes de zona horaria
   const formatearFechaARG = (fechaStr) => {
@@ -624,19 +781,29 @@ export default function CuentasCorrientesContainer({ supabase }) {
 
                   return (
                     <tr key={cliente.cliente_id || cliente.id} style={{ borderBottom: '1px solid #eeeae1' }}>
-                      <td style={{ padding: '0.85rem 1rem', fontWeight: 'bold', color: '#1c1917' }}>
-                        👤 {cliente.razon_social || 'SIN NOMBRE'}
+                      <td style={{ padding: '0.75rem 1rem' }}>
+                        <div style={{ fontWeight: 'bold', color: '#1c1917' }}>
+                          👤 {cliente.razon_social || 'SIN NOMBRE'}
+                        </div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginTop: '0.2rem', paddingLeft: '1.35rem', flexWrap: 'wrap' }}>
+                          {cliente.cuit_dni && (
+                            <span style={{ fontSize: '0.72rem', color: '#78716c' }}>
+                              CUIT: {cliente.cuit_dni}
+                            </span>
+                          )}
+                          {renderBadgeBCRA(cliente.cuit_dni)}
+                        </div>
                       </td>
-                      <td style={{ padding: '0.85rem 1rem', textAlign: 'right', fontWeight: 'bold', color: saldo > 0 ? '#15803d' : '#78716c' }}>
+                      <td style={{ padding: '0.75rem 1rem', textAlign: 'right', fontWeight: 'bold', color: saldo > 0 ? '#15803d' : '#78716c' }}>
                         $ {saldo.toLocaleString('es-AR', { minimumFractionDigits: 2 })}
                       </td>
-                      <td style={{ padding: '0.85rem 1rem', textAlign: 'right', fontWeight: 'bold', color: vencido > 0 ? '#dc2626' : '#a8a29e' }}>
+                      <td style={{ padding: '0.75rem 1rem', textAlign: 'right', fontWeight: 'bold', color: vencido > 0 ? '#dc2626' : '#a8a29e' }}>
                         $ {vencido.toLocaleString('es-AR', { minimumFractionDigits: 2 })}
                       </td>
-                      <td style={{ padding: '0.85rem 1rem', textAlign: 'center', color: '#78716c', fontSize: '0.8rem' }}>
+                      <td style={{ padding: '0.75rem 1rem', textAlign: 'center', color: '#78716c', fontSize: '0.8rem' }}>
                         {formatearFechaARG(cliente.fecha_ultimo_movimiento) || 'Sin movimientos'}
                       </td>
-                      <td style={{ padding: '0.85rem 1rem', textAlign: 'right' }}>
+                      <td style={{ padding: '0.75rem 1rem', textAlign: 'right' }}>
                         <button
                           onClick={() => setClienteSeleccionadoResumen(cliente)}
                           style={{
